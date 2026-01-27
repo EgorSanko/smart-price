@@ -19,6 +19,7 @@ from app.schemas.product import (
     ProductWithPriceHistory,
 )
 
+
 router = APIRouter(prefix="/products", tags=["Products"])
 
 
@@ -34,15 +35,15 @@ async def list_products(
     filters: ProductFilterDep,
 ) -> ProductListResponse:
     """List products with filtering and pagination.
-    
+
     Args:
         service: Product service dependency.
         pagination: Pagination parameters.
         filters: Filter parameters.
-        
+
     Returns:
         Paginated list of products.
-        
+
     Example:
         GET /api/v1/products?page=1&per_page=20&min_price=100
     """
@@ -56,9 +57,9 @@ async def list_products(
         page=pagination.page,
         per_page=pagination.per_page,
     )
-    
+
     pages = (total + pagination.per_page - 1) // pagination.per_page
-    
+
     return ProductListResponse(
         items=[ProductResponse.model_validate(p) for p in products],
         total=total,
@@ -81,25 +82,25 @@ async def get_product(
     product_id: int = Path(..., gt=0, description="Product ID"),
 ) -> ProductResponse:
     """Get single product by ID.
-    
+
     Args:
         service: Product service dependency.
         product_id: Product primary key.
-        
+
     Returns:
         Product details.
-        
+
     Raises:
         HTTPException: 404 if product not found.
     """
     product = await service.get_by_id(product_id)
-    
+
     if not product:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Product {product_id} not found",
         )
-    
+
     return ProductResponse.model_validate(product)
 
 
@@ -117,26 +118,26 @@ async def get_product_with_history(
     days: int = Query(30, ge=1, le=365, description="Days of history"),
 ) -> ProductWithPriceHistory:
     """Get product with price history and statistics.
-    
+
     Args:
         service: Product service dependency.
         product_id: Product primary key.
         days: Number of days of price history to include.
-        
+
     Returns:
         Product with price history and statistics.
-        
+
     Raises:
         HTTPException: 404 if product not found.
     """
     result = await service.get_with_price_history(product_id, days=days)
-    
+
     if not result:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Product {product_id} not found",
         )
-    
+
     return result
 
 
@@ -154,14 +155,14 @@ async def create_product(
     data: ProductCreate,
 ) -> ProductResponse:
     """Create a new product.
-    
+
     Args:
         service: Product service dependency.
         data: Product creation data.
-        
+
     Returns:
         Created product.
-        
+
     Raises:
         HTTPException: 400 if validation fails.
     """
@@ -189,15 +190,15 @@ async def update_product(
     product_id: int = Path(..., gt=0, description="Product ID"),
 ) -> ProductResponse:
     """Update an existing product.
-    
+
     Args:
         service: Product service dependency.
         data: Product update data (partial).
         product_id: Product primary key.
-        
+
     Returns:
         Updated product.
-        
+
     Raises:
         HTTPException: 404 if product not found.
     """
@@ -224,11 +225,11 @@ async def delete_product(
     product_id: int = Path(..., gt=0, description="Product ID"),
 ) -> None:
     """Delete a product.
-    
+
     Args:
         service: Product service dependency.
         product_id: Product primary key.
-        
+
     Raises:
         HTTPException: 404 if product not found.
     """
@@ -252,14 +253,14 @@ async def upsert_product(
     data: ProductCreate,
 ) -> ProductResponse:
     """Create or update product by external identifier.
-    
+
     If a product with the same marketplace_id and external_id exists,
     it will be updated. Otherwise, a new product is created.
-    
+
     Args:
         service: Product service dependency.
         data: Product data.
-        
+
     Returns:
         Created or updated product.
     """

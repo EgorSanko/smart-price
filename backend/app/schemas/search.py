@@ -3,17 +3,13 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
-
-if TYPE_CHECKING:
-    from app.schemas.product import ProductResponse
 
 
 class SortOrder(str, Enum):
     """Available sort options for search results."""
-    
+
     RELEVANCE = "relevance"
     PRICE_ASC = "price_asc"
     PRICE_DESC = "price_desc"
@@ -24,7 +20,7 @@ class SortOrder(str, Enum):
 
 class SearchType(str, Enum):
     """Search algorithm type."""
-    
+
     KEYWORD = "keyword"
     SEMANTIC = "semantic"
     HYBRID = "hybrid"
@@ -32,7 +28,7 @@ class SearchType(str, Enum):
 
 class SearchQuery(BaseModel):
     """Search query parameters."""
-    
+
     q: str = Field(..., min_length=1, max_length=500, description="Search query")
     marketplace_ids: list[int] | None = Field(
         None,
@@ -52,17 +48,17 @@ class SearchQuery(BaseModel):
         le=5,
         description="Minimum rating",
     )
-    
+
     sort_by: SortOrder = Field(SortOrder.RELEVANCE, description="Sort order")
     search_type: SearchType = Field(SearchType.HYBRID, description="Search algorithm")
-    
+
     page: int = Field(1, ge=1, description="Page number")
     per_page: int = Field(20, ge=1, le=100, description="Items per page")
 
 
 class PriceFacet(BaseModel):
     """Price range facet for filtering."""
-    
+
     min_price: float
     max_price: float
     avg_price: float
@@ -71,7 +67,7 @@ class PriceFacet(BaseModel):
 
 class MarketplaceFacet(BaseModel):
     """Marketplace facet with count."""
-    
+
     id: int
     name: str
     display_name: str
@@ -80,7 +76,7 @@ class MarketplaceFacet(BaseModel):
 
 class CategoryFacet(BaseModel):
     """Category facet with count."""
-    
+
     id: int
     name: str
     slug: str
@@ -89,14 +85,14 @@ class CategoryFacet(BaseModel):
 
 class BrandFacet(BaseModel):
     """Brand facet with count."""
-    
+
     name: str
     count: int
 
 
 class SearchFacets(BaseModel):
     """Aggregated facets for search filters."""
-    
+
     price: PriceFacet | None = None
     marketplaces: list[MarketplaceFacet] = []
     categories: list[CategoryFacet] = []
@@ -105,20 +101,20 @@ class SearchFacets(BaseModel):
 
 class SearchResult(BaseModel):
     """Single search result with relevance score."""
-    
+
     product: dict  # Will be ProductResponse, using dict to avoid circular import
     score: float = Field(..., ge=0, description="Relevance score")
     highlights: dict[str, list[str]] | None = Field(
         None,
         description="Highlighted text fragments",
     )
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
 class SearchResponse(BaseModel):
     """Paginated search results with facets."""
-    
+
     items: list[SearchResult]
     total: int
     page: int
@@ -131,7 +127,7 @@ class SearchResponse(BaseModel):
 
 class SearchSuggestion(BaseModel):
     """Search autocomplete suggestion."""
-    
+
     text: str
     type: str = Field(
         ...,
@@ -142,6 +138,6 @@ class SearchSuggestion(BaseModel):
 
 class SearchSuggestionsResponse(BaseModel):
     """Autocomplete suggestions response."""
-    
+
     suggestions: list[SearchSuggestion]
     query: str

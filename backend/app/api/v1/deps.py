@@ -14,18 +14,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.db.session import async_session_maker
 
+
 if TYPE_CHECKING:
     from app.services.product_service import ProductService
 
 
 # === Database Dependencies ===
 
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """Get async database session.
-    
+
     Yields:
         AsyncSession instance that auto-commits on success.
-        
+
     Example:
         @router.get("/items")
         async def get_items(db: DbSession):
@@ -46,19 +48,21 @@ DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 # === Service Dependencies ===
 
+
 async def get_product_service(
     session: AsyncSession = Depends(get_db),
-) -> "ProductService":
+) -> ProductService:
     """Get ProductService instance.
-    
+
     Args:
         session: Database session from dependency.
-        
+
     Returns:
         ProductService instance.
     """
     # Import here to avoid circular imports
     from app.services.product_service import ProductService
+
     return ProductService(session)
 
 
@@ -67,15 +71,16 @@ ProductServiceDep = Annotated["ProductService", Depends(get_product_service)]
 
 # === Pagination Dependencies ===
 
+
 class PaginationParams:
     """Common pagination parameters.
-    
+
     Attributes:
         page: Page number (1-indexed).
         per_page: Items per page.
         offset: Calculated offset for SQL queries.
     """
-    
+
     def __init__(
         self,
         page: int = Query(1, ge=1, description="Page number"),
@@ -88,7 +93,7 @@ class PaginationParams:
     ) -> None:
         self.page = page
         self.per_page = per_page
-    
+
     @property
     def offset(self) -> int:
         """Calculate SQL offset from page number."""
@@ -100,9 +105,10 @@ PaginationDep = Annotated[PaginationParams, Depends()]
 
 # === Filter Dependencies ===
 
+
 class ProductFilterParams:
     """Common product filter parameters."""
-    
+
     def __init__(
         self,
         marketplace_id: int | None = Query(

@@ -3,16 +3,17 @@
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from alembic import context
 from app.config import settings
-from app.db.base import Base
 
 # Import all models to register them with Base.metadata
 from app.db import models  # noqa: F401
+from app.db.base import Base
+
 
 # Alembic Config object
 config = context.config
@@ -33,7 +34,7 @@ def run_migrations_offline() -> None:
 
     This configures the context with just a URL and not an Engine,
     though an Engine is acceptable here as well.
-    
+
     By skipping the Engine creation we don't even need a DBAPI to be available.
     Calls to context.execute() here emit the given string to the script output.
     """
@@ -71,7 +72,7 @@ async def run_async_migrations() -> None:
     """
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = settings.database_url
-    
+
     connectable = async_engine_from_config(
         configuration,
         prefix="sqlalchemy.",

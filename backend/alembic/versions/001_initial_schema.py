@@ -31,7 +31,7 @@ def upgrade() -> None:
     """Create all tables."""
     # Enable required extensions
     op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
-    
+
     # Create enums
     alert_type_enum = postgresql.ENUM(
         "below", "drop_percent", "any_change",
@@ -39,14 +39,14 @@ def upgrade() -> None:
         create_type=True,
     )
     alert_type_enum.create(op.get_bind(), checkfirst=True)
-    
+
     alert_status_enum = postgresql.ENUM(
         "active", "triggered", "expired", "paused",
         name="alert_status_enum",
         create_type=True,
     )
     alert_status_enum.create(op.get_bind(), checkfirst=True)
-    
+
     # 1. Marketplaces
     op.create_table(
         "marketplaces",
@@ -63,7 +63,7 @@ def upgrade() -> None:
         sa.UniqueConstraint("name"),
     )
     op.create_index("ix_marketplaces_name", "marketplaces", ["name"])
-    
+
     # 2. Categories
     op.create_table(
         "categories",
@@ -81,7 +81,7 @@ def upgrade() -> None:
     )
     op.create_index("ix_categories_slug", "categories", ["slug"])
     op.create_index("ix_categories_parent_id", "categories", ["parent_id"])
-    
+
     # 3. Products
     op.create_table(
         "products",
@@ -131,12 +131,12 @@ def upgrade() -> None:
     # GIN index for full-text search (requires pg_trgm extension)
     op.execute(
         """
-        CREATE INDEX ix_product_title_gin 
-        ON products 
+        CREATE INDEX ix_product_title_gin
+        ON products
         USING gin (title gin_trgm_ops)
         """
     )
-    
+
     # 4. Price History
     op.create_table(
         "price_history",
@@ -156,7 +156,7 @@ def upgrade() -> None:
         "price_history",
         ["product_id", "recorded_at"],
     )
-    
+
     # 5. Product Matches
     op.create_table(
         "product_matches",
@@ -177,7 +177,7 @@ def upgrade() -> None:
     op.create_index("ix_product_match_canonical", "product_matches", ["canonical_product_id"])
     op.create_index("ix_product_match_matched", "product_matches", ["matched_product_id"])
     op.create_index("ix_product_match_confidence", "product_matches", ["confidence_score"])
-    
+
     # 6. Users
     op.create_table(
         "users",
@@ -198,7 +198,7 @@ def upgrade() -> None:
         sa.UniqueConstraint("email"),
     )
     op.create_index("ix_users_email", "users", ["email"])
-    
+
     # 7. Price Alerts
     op.create_table(
         "price_alerts",
@@ -222,7 +222,7 @@ def upgrade() -> None:
     op.create_index("ix_price_alerts_status", "price_alerts", ["status"])
     op.create_index("ix_price_alert_active", "price_alerts", ["status", "product_id"])
     op.create_index("ix_price_alert_user_status", "price_alerts", ["user_id", "status"])
-    
+
     # 8. Search History
     op.create_table(
         "search_history",
@@ -246,7 +246,7 @@ def upgrade() -> None:
         "search_history",
         ["user_id", "created_at"],
     )
-    
+
     # Insert default marketplaces
     op.execute(
         """
@@ -269,10 +269,10 @@ def downgrade() -> None:
     op.drop_table("products")
     op.drop_table("categories")
     op.drop_table("marketplaces")
-    
+
     # Drop enums
     op.execute("DROP TYPE IF EXISTS alert_status_enum")
     op.execute("DROP TYPE IF EXISTS alert_type_enum")
-    
+
     # Drop extension
     op.execute("DROP EXTENSION IF EXISTS pg_trgm")

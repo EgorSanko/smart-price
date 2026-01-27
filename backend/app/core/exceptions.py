@@ -8,13 +8,13 @@ from typing import Any
 
 class AppException(Exception):
     """Base exception for all application errors.
-    
+
     Attributes:
         message: Human-readable error message.
         code: Machine-readable error code.
         details: Additional error context.
     """
-    
+
     def __init__(
         self,
         message: str = "An error occurred",
@@ -29,12 +29,12 @@ class AppException(Exception):
 
 class NotFoundError(AppException):
     """Resource not found exception.
-    
+
     Example:
         >>> raise NotFoundError(resource="Product", id=123)
         NotFoundError: Product with id=123 not found
     """
-    
+
     def __init__(
         self,
         resource: str,
@@ -52,11 +52,11 @@ class NotFoundError(AppException):
 
 class ValidationError(AppException):
     """Data validation error.
-    
+
     Example:
         >>> raise ValidationError(field="price", reason="must be positive")
     """
-    
+
     def __init__(
         self,
         message: str = "Validation error",
@@ -75,10 +75,10 @@ class ValidationError(AppException):
 
 class DatabaseError(AppException):
     """Database operation error.
-    
+
     Used for wrapping SQLAlchemy errors with additional context.
     """
-    
+
     def __init__(
         self,
         message: str = "Database operation failed",
@@ -94,11 +94,11 @@ class DatabaseError(AppException):
 
 class ExternalServiceError(AppException):
     """External service (scraper, API) error.
-    
+
     Example:
         >>> raise ExternalServiceError(service="ozon", reason="rate limited")
     """
-    
+
     def __init__(
         self,
         service: str,
@@ -115,7 +115,7 @@ class ExternalServiceError(AppException):
 
 class AuthenticationError(AppException):
     """Authentication failure."""
-    
+
     def __init__(
         self,
         message: str = "Authentication failed",
@@ -130,7 +130,7 @@ class AuthenticationError(AppException):
 
 class AuthorizationError(AppException):
     """Authorization failure (insufficient permissions)."""
-    
+
     def __init__(
         self,
         message: str = "Insufficient permissions",
@@ -146,7 +146,7 @@ class AuthorizationError(AppException):
 
 class RateLimitError(AppException):
     """Rate limit exceeded."""
-    
+
     def __init__(
         self,
         retry_after: int | None = None,

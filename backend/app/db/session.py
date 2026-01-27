@@ -1,23 +1,30 @@
-# backend/app/db/session.py
-"""Database session configuration.
-
-Provides async SQLAlchemy engine and session factory.
-"""
+﻿"""Database session configuration."""
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
 from app.config import settings
 
-# Create async engine
-engine = create_async_engine(
-    str(settings.DATABASE_URL),
-    echo=settings.DEBUG,
-    pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
-)
 
-# Session factory
+# Check if using SQLite (for tests)
+is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+
+if is_sqlite:
+    engine = create_async_engine(
+        settings.DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+        echo=settings.DEBUG,
+    )
+else:
+    engine = create_async_engine(
+        settings.DATABASE_URL,
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+        echo=settings.DEBUG,
+    )
+
 async_session_maker = async_sessionmaker(
     engine,
     class_=AsyncSession,
@@ -28,11 +35,7 @@ async_session_maker = async_sessionmaker(
 
 
 async def get_async_session():
-    """Dependency for getting async session.
-    
-    Yields:
-        AsyncSession instance.
-    """
+    """Dependency for getting async session."""
     async with async_session_maker() as session:
         try:
             yield session

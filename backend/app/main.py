@@ -3,8 +3,8 @@
 This module creates and configures the FastAPI application instance.
 """
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,14 +20,14 @@ from app.db.session import engine
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler.
-    
+
     Handles startup and shutdown events:
     - Startup: Create database tables (dev only)
     - Shutdown: Dispose database connections
-    
+
     Args:
         app: FastAPI application instance.
-        
+
     Yields:
         None during application lifetime.
     """
@@ -36,16 +36,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Create tables in development (use migrations in production)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-    
+
     yield
-    
+
     # Shutdown
     await engine.dispose()
 
 
 def create_application() -> FastAPI:
     """Create and configure FastAPI application.
-    
+
     Returns:
         Configured FastAPI instance.
     """
@@ -58,7 +58,7 @@ def create_application() -> FastAPI:
         openapi_url="/openapi.json" if settings.DEBUG else None,
         lifespan=lifespan,
     )
-    
+
     # CORS middleware
     app.add_middleware(
         CORSMiddleware,
@@ -67,7 +67,7 @@ def create_application() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
+
     # Exception handlers
     @app.exception_handler(AppException)
     async def app_exception_handler(
@@ -83,10 +83,10 @@ def create_application() -> FastAPI:
                 "details": exc.details,
             },
         )
-    
+
     # Include routers
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
-    
+
     # Root endpoint
     @app.get("/", include_in_schema=False)
     async def root() -> dict:
@@ -96,7 +96,7 @@ def create_application() -> FastAPI:
             "version": settings.APP_VERSION,
             "docs": "/docs",
         }
-    
+
     return app
 
 

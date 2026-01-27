@@ -21,50 +21,50 @@ from app.schemas.search import (
 
 class SearchService:
     """Service for product search operations.
-    
+
     Supports full-text search (PostgreSQL) and will support semantic search
     (Qdrant) in future sprints.
-    
+
     Attributes:
         session: Async database session.
     """
-    
+
     def __init__(self, session: AsyncSession) -> None:
         """Initialize search service.
-        
+
         Args:
             session: SQLAlchemy async session.
         """
         self.session = session
-    
+
     async def search(
         self,
         query: SearchQuery,
     ) -> tuple[list[SearchResult], int, SearchFacets | None]:
         """Execute product search.
-        
+
         Args:
             query: Search query with filters and pagination.
-            
+
         Returns:
             Tuple of (results, total_count, facets).
         """
         # For now, implement keyword search only
         # Semantic and hybrid search will be added in Sprint 4
-        
+
         return await self._keyword_search(query)
-    
+
     async def _keyword_search(
         self,
         query: SearchQuery,
     ) -> tuple[list[SearchResult], int, SearchFacets | None]:
         """PostgreSQL full-text search implementation.
-        
+
         Uses ts_vector and ts_query for Russian language search.
-        
+
         Args:
             query: Search query parameters.
-            
+
         Returns:
             Tuple of (results, total_count, facets).
         """
@@ -72,7 +72,7 @@ class SearchService:
         search_vector = func.to_tsvector("russian", Product.title)
         search_query = func.plainto_tsquery("russian", query.q)
         rank = func.ts_rank(search_vector, search_query).label("rank")
-        
+
         # Base query with ranking
         stmt = (
             select(Product, rank)
@@ -82,33 +82,26 @@ class SearchService:
                 joinedload(Product.category),
             )
         )
-        
+
         # Count query
-        count_stmt = (
-            select(func.count(Product.id))
-            .where(search_vector.op("@@")(search_query))
-        )
-        
+        count_stmt = select(func.count(Product.id)).where(search_vector.op("@@")(search_query))
+
         # Apply filters
         stmt, count_stmt = self._apply_filters(stmt, count_stmt, query)
-        
+
         # Apply sorting
         stmt = self._apply_sorting(stmt, query.sort_by, rank)
-        
+
         # Get total count
         total = await self.session.scalar(count_stmt) or 0
-        
+
         # Apply pagination
-        stmt = (
-            stmt
-            .offset((query.page - 1) * query.per_page)
-            .limit(query.per_page)
-        )
-        
+        stmt = stmt.offset((query.page - 1) * query.per_page).limit(query.per_page)
+
         # Execute query
         result = await self.session.execute(stmt)
         rows = result.unique().all()
-        
+
         # Build results
         results = [
             SearchResult(
@@ -118,14 +111,14 @@ class SearchService:
             )
             for row in rows
         ]
-        
+
         # Get facets if we have results
         facets = None
         if total > 0:
             facets = await self._get_facets(query)
-        
+
         return results, total, facets
-    
+
     def _apply_filters(
         self,
         stmt,
@@ -133,57 +126,53 @@ class SearchService:
         query: SearchQuery,
     ):
         """Apply search filters to both queries.
-        
+
         Args:
             stmt: Main select statement.
             count_stmt: Count statement.
             query: Search query with filters.
-            
+
         Returns:
             Tuple of (filtered_stmt, filtered_count_stmt).
         """
         if query.marketplace_ids:
             stmt = stmt.where(Product.marketplace_id.in_(query.marketplace_ids))
-            count_stmt = count_stmt.where(
-                Product.marketplace_id.in_(query.marketplace_ids)
-            )
-        
+            count_stmt = count_stmt.where(Product.marketplace_id.in_(query.marketplace_ids))
+
         if query.category_ids:
             stmt = stmt.where(Product.category_id.in_(query.category_ids))
-            count_stmt = count_stmt.where(
-                Product.category_id.in_(query.category_ids)
-            )
-        
+            count_stmt = count_stmt.where(Product.category_id.in_(query.category_ids))
+
         if query.min_price is not None:
             stmt = stmt.where(Product.current_price >= query.min_price)
             count_stmt = count_stmt.where(Product.current_price >= query.min_price)
-        
+
         if query.max_price is not None:
             stmt = stmt.where(Product.current_price <= query.max_price)
             count_stmt = count_stmt.where(Product.current_price <= query.max_price)
-        
+
         if query.in_stock_only:
             stmt = stmt.where(Product.is_available == True)  # noqa: E712
             count_stmt = count_stmt.where(Product.is_available == True)  # noqa: E712
-        
+
         if query.brands:
             stmt = stmt.where(Product.brand.in_(query.brands))
             count_stmt = count_stmt.where(Product.brand.in_(query.brands))
-        
+
         if query.min_rating is not None:
             stmt = stmt.where(Product.rating >= query.min_rating)
             count_stmt = count_stmt.where(Product.rating >= query.min_rating)
-        
+
         return stmt, count_stmt
-    
+
     def _apply_sorting(self, stmt, sort_by: SortOrder, rank):
         """Apply sorting to query.
-        
+
         Args:
             stmt: Select statement.
             sort_by: Sort order enum.
             rank: Relevance rank expression.
-            
+
         Returns:
             Sorted statement.
         """
@@ -202,32 +191,29 @@ class SearchService:
                 return stmt.order_by(Product.created_at.desc())
             case _:
                 return stmt.order_by(rank.desc())
-    
+
     async def _get_facets(self, query: SearchQuery) -> SearchFacets:
         """Calculate facets for search filters.
-        
+
         Args:
             query: Search query (for applying base filter).
-            
+
         Returns:
             SearchFacets with aggregated data.
         """
         search_vector = func.to_tsvector("russian", Product.title)
         search_query = func.plainto_tsquery("russian", query.q)
         base_filter = search_vector.op("@@")(search_query)
-        
+
         # Price facet
-        price_stmt = (
-            select(
-                func.min(Product.current_price).label("min_price"),
-                func.max(Product.current_price).label("max_price"),
-                func.avg(Product.current_price).label("avg_price"),
-            )
-            .where(base_filter)
-        )
+        price_stmt = select(
+            func.min(Product.current_price).label("min_price"),
+            func.max(Product.current_price).label("max_price"),
+            func.avg(Product.current_price).label("avg_price"),
+        ).where(base_filter)
         price_result = await self.session.execute(price_stmt)
         price_row = price_result.one_or_none()
-        
+
         price_facet = None
         if price_row and price_row.min_price:
             price_facet = PriceFacet(
@@ -235,7 +221,7 @@ class SearchService:
                 max_price=float(price_row.max_price),
                 avg_price=round(float(price_row.avg_price), 2),
             )
-        
+
         # Marketplace facet
         marketplace_stmt = (
             select(
@@ -259,7 +245,7 @@ class SearchService:
             )
             for row in marketplace_result
         ]
-        
+
         # Category facet
         category_stmt = (
             select(
@@ -284,7 +270,7 @@ class SearchService:
             )
             for row in category_result
         ]
-        
+
         # Brand facet
         brand_stmt = (
             select(
@@ -299,40 +285,38 @@ class SearchService:
         )
         brand_result = await self.session.execute(brand_stmt)
         brand_facets = [
-            BrandFacet(name=row.brand, count=row.count)
-            for row in brand_result
-            if row.brand
+            BrandFacet(name=row.brand, count=row.count) for row in brand_result if row.brand
         ]
-        
+
         return SearchFacets(
             price=price_facet,
             marketplaces=marketplace_facets,
             categories=category_facets,
             brands=brand_facets,
         )
-    
+
     async def get_suggestions(
         self,
         partial_query: str,
         limit: int = 10,
     ) -> list[SearchSuggestion]:
         """Get search autocomplete suggestions.
-        
+
         Searches across:
         - Product titles (prefix match)
         - Brand names
         - Category names
-        
+
         Args:
             partial_query: Partial search string.
             limit: Maximum suggestions to return.
-            
+
         Returns:
             List of search suggestions.
         """
         suggestions: list[SearchSuggestion] = []
         pattern = f"{partial_query}%"
-        
+
         # Product title suggestions
         title_stmt = (
             select(Product.title, func.count(Product.id).label("cnt"))
@@ -350,7 +334,7 @@ class SearchService:
                     count=row.cnt,
                 )
             )
-        
+
         # Brand suggestions
         brand_stmt = (
             select(Product.brand, func.count(Product.id).label("cnt"))
@@ -370,13 +354,9 @@ class SearchService:
                         count=row.cnt,
                     )
                 )
-        
+
         # Category suggestions
-        category_stmt = (
-            select(Category.name)
-            .where(Category.name.ilike(pattern))
-            .limit(limit // 4)
-        )
+        category_stmt = select(Category.name).where(Category.name.ilike(pattern)).limit(limit // 4)
         category_result = await self.session.execute(category_stmt)
         for row in category_result:
             suggestions.append(
@@ -386,5 +366,5 @@ class SearchService:
                     count=None,
                 )
             )
-        
+
         return suggestions[:limit]

@@ -60,31 +60,31 @@ if (Test-Path $folder1) {
         Move-Item "$folder1/config.py" "backend/app/config.py" -Force
         Write-Host "  Moved: config.py -> backend/app/" -ForegroundColor Green
     }
-    
+
     # pyproject.toml -> backend/
     if (Test-Path "$folder1/pyproject.toml") {
         Move-Item "$folder1/pyproject.toml" "backend/pyproject.toml" -Force
         Write-Host "  Moved: pyproject.toml -> backend/" -ForegroundColor Green
     }
-    
+
     # Dockerfile -> backend/
     if (Test-Path "$folder1/Dockerfile") {
         Move-Item "$folder1/Dockerfile" "backend/Dockerfile" -Force
         Write-Host "  Moved: Dockerfile -> backend/" -ForegroundColor Green
     }
-    
+
     # docker-compose.dev.yml -> docker/
     if (Test-Path "$folder1/docker-compose.dev.yml") {
         Move-Item "$folder1/docker-compose.dev.yml" "docker/docker-compose.dev.yml" -Force
         Write-Host "  Moved: docker-compose.dev.yml -> docker/" -ForegroundColor Green
     }
-    
+
     # README.md -> root
     if (Test-Path "$folder1/README.md") {
         Move-Item "$folder1/README.md" "README.md" -Force
         Write-Host "  Moved: README.md -> root" -ForegroundColor Green
     }
-    
+
     # CURRENT_STRUCTURE.md -> docs/
     if (Test-Path "$folder1/CURRENT_STRUCTURE.md") {
         Move-Item "$folder1/CURRENT_STRUCTURE.md" "docs/CURRENT_STRUCTURE.md" -Force
@@ -103,19 +103,19 @@ if (Test-Path $folder2) {
         Move-Item "$folder2/base.py" "backend/app/db/base.py" -Force
         Write-Host "  Moved: base.py -> backend/app/db/" -ForegroundColor Green
     }
-    
+
     # session.py -> backend/app/db/
     if (Test-Path "$folder2/session.py") {
         Move-Item "$folder2/session.py" "backend/app/db/session.py" -Force
         Write-Host "  Moved: session.py -> backend/app/db/" -ForegroundColor Green
     }
-    
+
     # __init__.py -> backend/app/db/models/
     if (Test-Path "$folder2/__init__.py") {
         Move-Item "$folder2/__init__.py" "backend/app/db/models/__init__.py" -Force
         Write-Host "  Moved: __init__.py -> backend/app/db/models/" -ForegroundColor Green
     }
-    
+
     # Models -> backend/app/db/models/
     $models = @("marketplace.py", "category.py", "product.py", "price_history.py", "product_match.py", "user.py", "alert.py")
     foreach ($model in $models) {
@@ -124,19 +124,19 @@ if (Test-Path $folder2) {
             Write-Host "  Moved: $model -> backend/app/db/models/" -ForegroundColor Green
         }
     }
-    
+
     # env.py -> backend/alembic/
     if (Test-Path "$folder2/env.py") {
         Move-Item "$folder2/env.py" "backend/alembic/env.py" -Force
         Write-Host "  Moved: env.py -> backend/alembic/" -ForegroundColor Green
     }
-    
+
     # 001_initial_schema.py -> backend/alembic/versions/
     if (Test-Path "$folder2/001_initial_schema.py") {
         Move-Item "$folder2/001_initial_schema.py" "backend/alembic/versions/001_initial_schema.py" -Force
         Write-Host "  Moved: 001_initial_schema.py -> backend/alembic/versions/" -ForegroundColor Green
     }
-    
+
     # CURRENT_STRUCTURE.md (обновлённый) -> docs/
     if (Test-Path "$folder2/CURRENT_STRUCTURE.md") {
         Move-Item "$folder2/CURRENT_STRUCTURE.md" "docs/CURRENT_STRUCTURE.md" -Force

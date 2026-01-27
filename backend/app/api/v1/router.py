@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints import health, products, search
 
+
 api_router = APIRouter()
 
 # Include all endpoint routers
