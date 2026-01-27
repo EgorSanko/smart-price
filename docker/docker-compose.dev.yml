@@ -1,0 +1,249 @@
+# Smart Price - Development Docker Compose
+# Usage: docker-compose -f docker/docker-compose.dev.yml up -d
+
+version: "3.8"
+
+services:
+  # ============================================
+  # Backend API
+  # ============================================
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: smart_price_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount source code for hot reload
+      - ../backend/app:/app/app:ro
+      - ../backend/tests:/app/tests:ro
+      - ../backend/alembic:/app/alembic:ro
+    environment:
+      - DEBUG=true
+      - ENVIRONMENT=development
+      - POSTGRES_SERVER=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-smartprice}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-smartprice_secret}
+      - POSTGRES_DB=${POSTGRES_DB:-smartprice}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=8123
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - LOG_LEVEL=DEBUG
+      - LOG_FORMAT=console
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    networks:
+      - smart_price_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  db:
+    image: postgres:16-alpine
+    container_name: smart_price_db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-smartprice}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-smartprice_secret}
+      - POSTGRES_DB=${POSTGRES_DB:-smartprice}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Init scripts
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - smart_price_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-smartprice} -d ${POSTGRES_DB:-smartprice}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # Redis (Cache & Celery Broker)
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: smart_price_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - smart_price_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # Qdrant (Vector Database)
+  # ============================================
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: smart_price_qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"  # HTTP API
+      - "6334:6334"  # gRPC API
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    networks:
+      - smart_price_network
+
+  # ============================================
+  # ClickHouse (Analytics Database)
+  # ============================================
+  clickhouse:
+    image: clickhouse/clickhouse-server:24-alpine
+    container_name: smart_price_clickhouse
+    restart: unless-stopped
+    ports:
+      - "8123:8123"  # HTTP interface
+      - "9000:9000"  # Native protocol
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+      - ./clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    environment:
+      - CLICKHOUSE_DB=smartprice
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    networks:
+      - smart_price_network
+
+  # ============================================
+  # Celery Worker
+  # ============================================
+  celery_worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: smart_price_celery_worker
+    restart: unless-stopped
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
+    volumes:
+      - ../backend/app:/app/app:ro
+    environment:
+      - POSTGRES_SERVER=db
+      - POSTGRES_USER=${POSTGRES_USER:-smartprice}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-smartprice_secret}
+      - POSTGRES_DB=${POSTGRES_DB:-smartprice}
+      - REDIS_HOST=redis
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+      - backend
+    networks:
+      - smart_price_network
+
+  # ============================================
+  # Celery Beat (Scheduler)
+  # ============================================
+  celery_beat:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: smart_price_celery_beat
+    restart: unless-stopped
+    command: celery -A app.celery_app beat --loglevel=info
+    volumes:
+      - ../backend/app:/app/app:ro
+    environment:
+      - REDIS_HOST=redis
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
+      - celery_worker
+    networks:
+      - smart_price_network
+
+  # ============================================
+  # Adminer (Database Management UI)
+  # ============================================
+  adminer:
+    image: adminer:latest
+    container_name: smart_price_adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - ADMINER_DEFAULT_SERVER=db
+    depends_on:
+      - db
+    networks:
+      - smart_price_network
+
+  # ============================================
+  # Redis Commander (Redis UI)
+  # ============================================
+  redis_commander:
+    image: rediscommander/redis-commander:latest
+    container_name: smart_price_redis_commander
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      - redis
+    networks:
+      - smart_price_network
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  smart_price_network:
+    driver: bridge
+    name: smart_price_network
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  postgres_data:
+    name: smart_price_postgres_data
+  redis_data:
+    name: smart_price_redis_data
+  qdrant_data:
+    name: smart_price_qdrant_data
+  clickhouse_data:
+    name: smart_price_clickhouse_data
+  clickhouse_logs:
+    name: smart_price_clickhouse_logs
