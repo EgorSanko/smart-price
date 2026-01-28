@@ -406,3 +406,45 @@ class PriceAlertResponse(BaseModel):
     triggered_at: datetime | None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ============================================================================
+# Response Aliases (for API compatibility)
+# ============================================================================
+
+
+class ProductListResponse(BaseModel):
+    """Paginated list of products response."""
+
+    items: list[ProductListItem]
+    total: int = Field(..., ge=0, description="Total items count")
+    page: int = Field(1, ge=1, description="Current page")
+    per_page: int = Field(20, ge=1, le=100, description="Items per page")
+    pages: int = Field(0, ge=0, description="Total pages count")
+
+    @model_validator(mode="after")
+    def calculate_pages(self) -> "ProductListResponse":
+        """Calculate total pages."""
+        if self.per_page > 0:
+            self.pages = (self.total + self.per_page - 1) // self.per_page
+        return self
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductDetail(ProductWithPriceHistory):
+    """Detailed product response (alias for ProductWithPriceHistory)."""
+
+    pass
+
+
+class PriceHistoryResponse(BaseModel):
+    """Price history response for a product."""
+
+    product_id: int
+    product_title: str
+    current_price: float
+    history: list[PricePoint]
+    stats: PriceStats | None = None
+
+    model_config = ConfigDict(from_attributes=True)
