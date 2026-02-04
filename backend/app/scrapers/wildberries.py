@@ -1,15 +1,25 @@
-"""Wildberries marketplace scraper.
+"""Wildberries marketplace scraper with anti-detection measures.
 
 Scraper for wildberries.ru using their public API endpoints.
-Unlike Ozon, Wildberries exposes public APIs that can be used directly.
+Includes anti-bot protection bypass: random delays, UA rotation, retry logic.
 """
 
 from __future__ import annotations
 
 import logging
+import random
 from typing import TYPE_CHECKING, Any, AsyncGenerator
 
-from app.scrapers.base import BaseScraper, ScraperError
+import httpx
+
+from app.scrapers.base import BaseScraper, RateLimitError, ScraperError
+from app.scrapers.utils import (
+    get_random_user_agent,
+    human_like_delay,
+    parse_price,
+    random_delay,
+    with_retry,
+)
 
 if TYPE_CHECKING:
     from app.schemas.product import ProductCreate
@@ -24,20 +34,24 @@ class WildberriesAPIError(ScraperError):
 
 
 class WildberriesScraper(BaseScraper):
-    """Scraper for Wildberries marketplace.
+    """Scraper for Wildberries marketplace with anti-detection.
 
-    Wildberries has public API endpoints for search and product data,
-    making scraping much simpler than with Ozon. No browser automation needed.
+    Wildberries has public API endpoints for search and product data.
+    This scraper includes protection against 429 rate limiting:
+    - Random delays between requests (2-5 seconds)
+    - User-Agent rotation
+    - Exponential backoff on errors
+    - Optional proxy support
 
     Attributes:
         marketplace_name: "wildberries"
         base_url: "https://www.wildberries.ru"
-        rate_limit: 2.0 requests per second
+        rate_limit: 0.3 requests per second (conservative)
     """
 
     marketplace_name: str = "wildberries"
     base_url: str = "https://www.wildberries.ru"
-    rate_limit: float = 2.0
+    rate_limit: float = 0.3  # ~1 request per 3 seconds
 
     # API endpoints
     _search_api: str = "https://search.wb.ru/exactmatch/ru/common/v7/search"
@@ -52,29 +66,132 @@ class WildberriesScraper(BaseScraper):
         marketplace_id: int = 2,
         proxy_url: str | None = None,
         dest: int | None = None,
+        min_delay: float = 2.0,
+        max_delay: float = 5.0,
     ) -> None:
-        """Initialize Wildberries scraper.
+        """Initialize Wildberries scraper with anti-detection settings.
 
         Args:
             marketplace_id: Database ID for Wildberries marketplace.
-            proxy_url: Optional proxy URL.
+            proxy_url: Optional proxy URL for requests.
             dest: Destination region ID (default: Moscow).
+            min_delay: Minimum delay between requests (seconds).
+            max_delay: Maximum delay between requests (seconds).
         """
         super().__init__(proxy_url=proxy_url)
         self._marketplace_id = marketplace_id
         self._dest = dest or self._default_dest
+        self._min_delay = min_delay
+        self._max_delay = max_delay
+        self._request_count = 0
 
     def _get_headers(self) -> dict[str, str]:
-        """Override headers for WB API compatibility."""
-        headers = super()._get_headers()
-        headers.update(
-            {
-                "Accept": "application/json",
-                "Origin": self.base_url,
-                "Referer": f"{self.base_url}/",
-            }
-        )
+        """Get randomized headers for each request."""
+        user_agent = get_random_user_agent(mobile=random.random() > 0.7)
+
+        headers = {
+            "User-Agent": user_agent,
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Origin": self.base_url,
+            "Referer": f"{self.base_url}/",
+            "Connection": "keep-alive",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "cross-site",
+        }
+
+        # Randomly add optional headers
+        if random.random() > 0.5:
+            headers["DNT"] = "1"
+
+        if random.random() > 0.5:
+            headers["Sec-CH-UA"] = (
+                '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"'
+            )
+            headers["Sec-CH-UA-Mobile"] = "?0"
+            headers["Sec-CH-UA-Platform"] = '"Windows"'
+
         return headers
+
+    async def _make_request(
+        self,
+        url: str,
+        params: dict | None = None,
+        retry_count: int = 3,
+    ) -> dict:
+        """Make API request with anti-detection measures.
+
+        Args:
+            url: API endpoint URL.
+            params: Query parameters.
+            retry_count: Number of retries on failure.
+
+        Returns:
+            JSON response data.
+
+        Raises:
+            WildberriesAPIError: If request fails after retries.
+        """
+        last_error = None
+
+        for attempt in range(retry_count):
+            try:
+                # Random delay before request (anti-bot)
+                if self._request_count > 0:
+                    delay = random.uniform(self._min_delay, self._max_delay)
+                    logger.debug("Waiting %.1f seconds before request", delay)
+                    await random_delay(delay, delay + 1)
+
+                self._request_count += 1
+
+                # Create fresh client with new headers for each request
+                async with httpx.AsyncClient(
+                    timeout=httpx.Timeout(30.0, connect=10.0),
+                    headers=self._get_headers(),
+                    follow_redirects=True,
+                ) as client:
+                    response = await client.get(url, params=params)
+
+                    if response.status_code == 429:
+                        wait_time = (attempt + 1) * 10  # 10, 20, 30 seconds
+                        logger.warning(
+                            "Rate limited (429), waiting %d seconds (attempt %d/%d)",
+                            wait_time,
+                            attempt + 1,
+                            retry_count,
+                        )
+                        await random_delay(wait_time, wait_time + 5)
+                        continue
+
+                    response.raise_for_status()
+                    return response.json()
+
+            except httpx.HTTPStatusError as e:
+                last_error = e
+                logger.warning(
+                    "HTTP error %s (attempt %d/%d): %s",
+                    e.response.status_code,
+                    attempt + 1,
+                    retry_count,
+                    str(e),
+                )
+                if attempt < retry_count - 1:
+                    await random_delay(5, 10)
+
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    "Request error (attempt %d/%d): %s",
+                    attempt + 1,
+                    retry_count,
+                    str(e),
+                )
+                if attempt < retry_count - 1:
+                    await random_delay(3, 7)
+
+        raise WildberriesAPIError(f"Failed after {retry_count} attempts: {last_error}")
 
     @staticmethod
     def _get_basket_host(vol: int) -> str:
@@ -266,12 +383,12 @@ class WildberriesScraper(BaseScraper):
             "suppressSpellcheck": "false",
         }
 
-        logger.info("Searching Wildberries: query=%s, page=%d", query, page)
+        logger.info("Searching Wildberries: query='%s', page=%d", query, page)
 
         try:
-            data = await self.fetch_json(self._search_api, params=params)
-        except Exception as e:
-            logger.error("Search API error: %s", e)
+            data = await self._make_request(self._search_api, params=params)
+        except WildberriesAPIError as e:
+            logger.error("Search failed: %s", e)
             return []
 
         products: list[ProductCreate] = []
@@ -308,9 +425,9 @@ class WildberriesScraper(BaseScraper):
         logger.info("Fetching Wildberries product: %s", product_id)
 
         try:
-            data = await self.fetch_json(self._card_api, params=params)
-        except Exception as e:
-            logger.error("Card API error: %s", e)
+            data = await self._make_request(self._card_api, params=params)
+        except WildberriesAPIError as e:
+            logger.error("Get product failed: %s", e)
             return None
 
         products = data.get("data", {}).get("products", [])
@@ -351,7 +468,16 @@ class WildberriesScraper(BaseScraper):
         )
 
         try:
-            data = await self.fetch_json(detail_url)
+            # Use shorter delay for CDN requests
+            await random_delay(0.5, 1.5)
+
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(15.0),
+                headers=self._get_headers(),
+            ) as client:
+                response = await client.get(detail_url)
+                response.raise_for_status()
+                data = response.json()
 
             result = {}
 
@@ -392,22 +518,15 @@ class WildberriesScraper(BaseScraper):
         Yields:
             Product data for each product.
         """
-        # Extract subject ID from URL
-        # URL format: https://www.wildberries.ru/catalog/elektronika/smartfony-i-telefony/vse-smartfony
-        # or with shard: https://www.wildberries.ru/catalog/0/search.aspx?subject=515
-
         import re
 
         subject_match = re.search(r"subject[=:](\d+)", category_url)
         if subject_match:
             subject_id = subject_match.group(1)
         else:
-            # Need to fetch the category page to get subject ID
             logger.warning(
-                "Could not extract subject ID from URL, "
-                "using URL as search query"
+                "Could not extract subject ID from URL, using URL as search query"
             )
-            # Extract last path segment as query
             path_parts = category_url.rstrip("/").split("/")
             query = path_parts[-1].replace("-", " ")
 
@@ -448,9 +567,9 @@ class WildberriesScraper(BaseScraper):
             }
 
             try:
-                data = await self.fetch_json(self._search_api, params=params)
-            except Exception as e:
-                logger.error("Category API error on page %d: %s", page, e)
+                data = await self._make_request(self._search_api, params=params)
+            except WildberriesAPIError as e:
+                logger.error("Category page %d failed: %s", page, e)
                 break
 
             items = data.get("data", {}).get("products", [])
@@ -505,7 +624,7 @@ class WildberriesScraper(BaseScraper):
         params = {"supplierId": seller_id}
 
         try:
-            data = await self.fetch_json(self._seller_api, params=params)
+            data = await self._make_request(self._seller_api, params=params)
             return {
                 "id": data.get("id"),
                 "name": data.get("name"),
@@ -541,9 +660,9 @@ class WildberriesScraper(BaseScraper):
         similar_api = "https://similar-products.wildberries.ru/api/v1/similar"
 
         try:
-            data = await self.fetch_json(similar_api, params=params)
-        except Exception as e:
-            logger.warning("Similar products API error: %s", e)
+            data = await self._make_request(similar_api, params=params)
+        except WildberriesAPIError as e:
+            logger.warning("Similar products failed: %s", e)
             return []
 
         products: list[ProductCreate] = []
