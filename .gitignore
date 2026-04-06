@@ -1,44 +1,42 @@
+﻿# Debug files
+debug_*.py
+check_*.py
+test_*.py
+scrape_*.py
+smart_price_api*.py
+smart_price_final.py
+smart_price_scraper.py
+smart_search.py
+wb_api.py
+*.html
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!frontend/**/*.json
+!.mcp.json
+
+# Playwright MCP scratch (logs, snapshots, ad-hoc screenshots)
+.playwright-mcp/
+
 # Python
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
 .venv/
 venv/
-.env
-
-# IDE
-.idea/
-.vscode/
-*.swp
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Build
-dist/
-build/
-*.egg-info/
 
 # Node
 node_modules/
 .next/
-out/
 
 # Docker
-docker/volumes/
-
-# ML
-*.pt
-*.pth
-*.onnx
-models/
-
-# Logs
 *.log
-logs/
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Env
+.env
+!.env.example
+!.env.local
