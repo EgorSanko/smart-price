@@ -1,148 +1,108 @@
-/**
- * FilterPanel - фиолетово-графитовая тема
- */
-
 'use client'
 
-import { useState } from 'react'
-import { ChevronDown, Check } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import type { SearchFacets } from '@/types'
-
 interface FilterPanelProps {
-  facets: SearchFacets | null
+  facets: {
+    marketplaces: Record<string, number>
+    price: { min_price: number; max_price: number; avg_price: number }
+  } | null
   filters: {
     marketplace_ids: number[]
-    min_price: number | undefined
-    max_price: number | undefined
+    min_price?: number
+    max_price?: number
     in_stock: boolean
     sort_by: string
   }
-  onFiltersChange: (filters: FilterPanelProps['filters']) => void
+  onFiltersChange: (filters: any) => void
 }
 
-const marketplaces = [
-  { id: 1, name: 'Ozon', color: '#005bff' },
-  { id: 2, name: 'Wildberries', color: '#cb11ab' },
-  { id: 3, name: 'Яндекс Маркет', color: '#ffcc00' },
-  { id: 4, name: 'AliExpress', color: '#ff4747' },
+const MARKETPLACES = [
+  { id: 1, name: 'Яндекс Маркет', key: 'yandex', color: '#ffcc00' },
+  { id: 2, name: 'Wildberries', key: 'wildberries', color: '#cb11ab' },
+  { id: 3, name: 'Ситилинк', key: 'citilink', color: '#ff6600' },
+  { id: 4, name: 'Регард', key: 'regard', color: '#e53935' },
+  { id: 5, name: 'AliExpress', key: 'aliexpress', color: '#ff4747' },
+  { id: 6, name: 'Onliner', key: 'onliner', color: '#65cb02' },
 ]
-
-const sortOptions = [
-  { value: 'relevance', label: 'По релевантности' },
-  { value: 'price_asc', label: 'Сначала дешевле' },
-  { value: 'price_desc', label: 'Сначала дороже' },
-  { value: 'rating', label: 'По рейтингу' },
-]
-
-function FilterSection({ title, defaultOpen = true, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
-  const [isOpen, setIsOpen] = useState(defaultOpen)
-
-  return (
-    <div className="border-b border-graphite-600 pb-5 mb-5 last:border-0 last:pb-0 last:mb-0">
-      <button onClick={() => setIsOpen(!isOpen)} className="flex items-center justify-between w-full text-left mb-3">
-        <span className="font-semibold text-txt-primary">{title}</span>
-        <ChevronDown className={cn('w-5 h-5 text-txt-muted transition-transform', isOpen && 'rotate-180')} />
-      </button>
-      {isOpen && children}
-    </div>
-  )
-}
 
 export function FilterPanel({ facets, filters, onFiltersChange }: FilterPanelProps) {
   const toggleMarketplace = (id: number) => {
-    const newIds = filters.marketplace_ids.includes(id)
-      ? filters.marketplace_ids.filter((mpId) => mpId !== id)
+    const ids = filters.marketplace_ids.includes(id)
+      ? filters.marketplace_ids.filter(i => i !== id)
       : [...filters.marketplace_ids, id]
-    onFiltersChange({ ...filters, marketplace_ids: newIds })
+    onFiltersChange({ ...filters, marketplace_ids: ids })
   }
 
   return (
-    <div>
-      {/* Sort */}
-      <FilterSection title="Сортировка">
-        <select
-          value={filters.sort_by}
-          onChange={(e) => onFiltersChange({ ...filters, sort_by: e.target.value })}
-          className="w-full bg-graphite-700 border border-graphite-600 rounded-xl px-4 py-2.5 text-sm font-medium text-txt-primary focus:outline-none focus:ring-2 focus:ring-accent"
-        >
-          {sortOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      </FilterSection>
-
-      {/* Marketplaces */}
-      <FilterSection title="Маркетплейсы">
+    <div className="space-y-6">
+      {/* Маркетплейсы */}
+      <div>
+        <h3 className="text-sm font-semibold text-[var(--t)] mb-3">Маркетплейсы</h3>
         <div className="space-y-2">
-          {marketplaces.map((mp) => {
-            const isChecked = filters.marketplace_ids.includes(mp.id)
+          {MARKETPLACES.map((mp) => {
+            const count = facets?.marketplaces[mp.key] || 0
+            const isActive = filters.marketplace_ids.includes(mp.id)
             return (
-              <label
+              <button
                 key={mp.id}
-                className={cn(
-                  'flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-colors',
-                  isChecked ? 'bg-graphite-700' : 'hover:bg-graphite-700'
-                )}
+                onClick={() => toggleMarketplace(mp.id)}
+                className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                  isActive
+                    ? 'border-[var(--ac)] bg-[rgba(108,92,231,.1)]'
+                    : 'border-[var(--bd)] hover:border-[var(--bl)] bg-[var(--ci)]'
+                }`}
               >
-                <div
-                  className={cn(
-                    'w-5 h-5 rounded border-2 flex items-center justify-center transition-colors',
-                    isChecked ? 'bg-accent border-accent' : 'border-graphite-500'
-                  )}
-                >
-                  {isChecked && <Check className="w-3 h-3 text-white" />}
-                </div>
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: mp.color }} />
-                <span className="text-sm font-medium text-txt-secondary">{mp.name}</span>
-                <input type="checkbox" checked={isChecked} onChange={() => toggleMarketplace(mp.id)} className="sr-only" />
-              </label>
+                <span
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{ background: mp.color }}
+                />
+                <span className={`text-sm font-medium ${isActive ? 'text-[var(--t)]' : 'text-[var(--td)]'}`}>
+                  {mp.name}
+                </span>
+                <span className="ml-auto text-xs text-[var(--tm)]">{count}</span>
+              </button>
             )
           })}
         </div>
-      </FilterSection>
+      </div>
 
-      {/* Price */}
-      <FilterSection title="Цена">
-        <div className="flex items-center gap-2">
-          <input
-            type="number"
-            placeholder="От"
-            value={filters.min_price || ''}
-            onChange={(e) => onFiltersChange({ ...filters, min_price: e.target.value ? parseInt(e.target.value) : undefined })}
-            className="flex-1 bg-graphite-700 border border-graphite-600 rounded-xl px-3 py-2.5 text-sm text-txt-primary placeholder:text-txt-muted focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-          <span className="text-txt-muted">—</span>
-          <input
-            type="number"
-            placeholder="До"
-            value={filters.max_price || ''}
-            onChange={(e) => onFiltersChange({ ...filters, max_price: e.target.value ? parseInt(e.target.value) : undefined })}
-            className="flex-1 bg-graphite-700 border border-graphite-600 rounded-xl px-3 py-2.5 text-sm text-txt-primary placeholder:text-txt-muted focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-        </div>
-      </FilterSection>
+      {/* Сортировка */}
+      <div>
+        <h3 className="text-sm font-semibold text-[var(--t)] mb-3">Сортировка</h3>
+        <select
+          value={filters.sort_by}
+          onChange={(e) => onFiltersChange({ ...filters, sort_by: e.target.value })}
+          className="w-full p-3 rounded-xl bg-[var(--ci)] border border-[var(--bd)] text-[var(--t)] text-sm"
+        >
+          <option value="relevance">По релевантности</option>
+          <option value="price_asc">Сначала дешёвые</option>
+          <option value="price_desc">Сначала дорогие</option>
+          <option value="rating">По рейтингу</option>
+        </select>
+      </div>
 
-      {/* In stock */}
-      <FilterSection title="Наличие" defaultOpen={false}>
+      {/* В наличии */}
+      <div>
         <label className="flex items-center gap-3 cursor-pointer">
-          <div
-            className={cn(
-              'w-5 h-5 rounded border-2 flex items-center justify-center transition-colors',
-              filters.in_stock ? 'bg-accent border-accent' : 'border-graphite-500'
-            )}
-          >
-            {filters.in_stock && <Check className="w-3 h-3 text-white" />}
-          </div>
-          <span className="text-sm font-medium text-txt-secondary">Только в наличии</span>
-          <input type="checkbox" checked={filters.in_stock} onChange={(e) => onFiltersChange({ ...filters, in_stock: e.target.checked })} className="sr-only" />
+          <input
+            type="checkbox"
+            checked={filters.in_stock}
+            onChange={(e) => onFiltersChange({ ...filters, in_stock: e.target.checked })}
+            className="w-5 h-5 rounded border-[var(--bd)] bg-[var(--ci)] accent-[var(--ac)]"
+          />
+          <span className="text-sm text-[var(--td)]">Только в наличии</span>
         </label>
-      </FilterSection>
+      </div>
 
-      {/* Reset */}
+      {/* Сброс */}
       <button
-        onClick={() => onFiltersChange({ marketplace_ids: [], min_price: undefined, max_price: undefined, in_stock: true, sort_by: 'relevance' })}
-        className="w-full text-sm font-medium text-txt-muted hover:text-accent-light py-2 transition-colors"
+        onClick={() => onFiltersChange({
+          marketplace_ids: [],
+          min_price: undefined,
+          max_price: undefined,
+          in_stock: true,
+          sort_by: 'relevance',
+        })}
+        className="w-full p-3 rounded-xl border border-[var(--bd)] text-[var(--td)] text-sm hover:border-[var(--r)] hover:text-[var(--r)] transition-colors"
       >
         Сбросить фильтры
       </button>

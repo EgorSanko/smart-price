@@ -2,7 +2,12 @@
  * Docs page - фиолетово-графитовая тема
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
+
+export const metadata: Metadata = {
+  title: 'Документация',
+}
 import { BookOpen, Code, Rocket, Settings, Search, Bell, BarChart2, Bot } from 'lucide-react'
 
 const sections = [
@@ -137,8 +142,8 @@ export default function DocsPage() {
                 </p>
                 <ul className="space-y-2">
                   <li className="flex items-center gap-3">
-                    <div className="w-3 h-3 rounded-full bg-[#005bff]" />
-                    <span className="text-txt-primary">Ozon</span>
+                    <div className="w-3 h-3 rounded-full bg-[#ff6600]" />
+                    <span className="text-txt-primary">Ситилинк</span>
                   </li>
                   <li className="flex items-center gap-3">
                     <div className="w-3 h-3 rounded-full bg-[#cb11ab]" />

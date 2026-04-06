@@ -1,45 +1,47 @@
 import type { Config } from 'tailwindcss'
 
 const config: Config = {
-  content: [
-    './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
-    './src/components/**/*.{js,ts,jsx,tsx,mdx}',
-    './src/app/**/*.{js,ts,jsx,tsx,mdx}',
-  ],
+  content: ['./src/**/*.{js,ts,jsx,tsx,mdx}'],
   theme: {
     extend: {
       colors: {
-        // Графитовая тема
-        graphite: {
-          950: '#0D0E13',  // Основной фон
-          900: '#13141B',  // Шапка
-          800: '#1B1D29',  // Карточки
-          700: '#242736',  // Hover карточек
-          600: '#2D3143',  // Бордеры
-          500: '#3D4155',  // Неактивные элементы
+        // Маппинг старых классов на твои CSS переменные
+        'graphite': {
+          950: 'var(--bg)',      // #08080b
+          900: 'var(--c1)',      // #111116
+          800: 'var(--c2)',      // #1a1a22
+          700: 'var(--ci)',      // #13131a
+          600: 'var(--bd)',      // #222230
+          500: 'var(--bl)',      // #2a2a3a
         },
-        // Фиолетовый акцент
-        accent: {
-          DEFAULT: '#5F4BFF',
-          light: '#8C7BFF',
-          dark: '#4A38CC',
+        'txt': {
+          primary: 'var(--t)',    // #e8e8ed
+          secondary: 'var(--td)', // #7a7a8e
+          muted: 'var(--tm)',     // #55556a
         },
-        // Текст
-        txt: {
-          primary: '#ECEBFA',
-          secondary: '#A1A1B8',
-          muted: '#6B6B80',
+        'accent': {
+          DEFAULT: 'var(--ac)',   // #6c5ce7
+          light: '#a78bfa',
+          dark: '#5849c4',
         },
+        'success': 'var(--g)',    // #00d68f
+        'warning': 'var(--o)',    // #f5a623
+        'danger': 'var(--r)',     // #ff6b6b
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['Manrope', 'system-ui', 'sans-serif'],
+      },
+      borderRadius: {
+        'xl': '14px',
+        '2xl': '18px',
       },
       boxShadow: {
-        'card': '0 4px 24px rgba(0, 0, 0, 0.3)',
-        'glow': '0 0 20px rgba(95, 75, 255, 0.3)',
+        'card': '0 4px 24px rgba(0,0,0,.3)',
+        'glow': '0 0 20px rgba(108,92,231,.4)',
       },
     },
   },
   plugins: [],
 }
+
 export default config

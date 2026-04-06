@@ -1,219 +1,189 @@
-/**
- * Header - фиолетово-графитовая тема
- */
-
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import { useState } from 'react'
-import { 
-  Search, 
-  Menu, 
-  X, 
-  Heart, 
-  User, 
-  BarChart2, 
-  Smartphone,
-  Laptop,
-  Headphones,
-  Tv,
-  Home,
-  Gamepad2,
-  ChevronRight,
-  MessageSquare
-} from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { usePathname } from 'next/navigation'
+import { Search, Scale, MessageCircle, Info, Menu, X, LayoutGrid, CreditCard, LogIn, User, LogOut, Crown, Sparkles } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { useAuth } from '@/lib/auth'
 
-const categories = [
-  { name: 'Смартфоны и гаджеты', slug: 'smartphones', icon: Smartphone },
-  { name: 'Компьютеры и ноутбуки', slug: 'laptops', icon: Laptop },
-  { name: 'Телевизоры Аудио Hi-Fi', slug: 'tvs', icon: Tv },
-  { name: 'Наушники', slug: 'headphones', icon: Headphones },
-  { name: 'Для дома', slug: 'home', icon: Home },
-  { name: 'Игры и консоли', slug: 'gaming', icon: Gamepad2 },
+const navItems = [
+  { href: '/', label: 'Поиск', icon: Search },
+  { href: '/catalog', label: 'Каталог', icon: LayoutGrid },
+  { href: '/compare', label: 'Сравнение', icon: Scale },
+  { href: '/analyze', label: 'Анализ цены', icon: Sparkles },
+  { href: '/chat', label: 'AI Помощник', icon: MessageCircle },
 ]
 
 export function Header() {
   const pathname = usePathname()
-  const router = useRouter()
-  const [showCatalog, setShowCatalog] = useState(false)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const { user, token, logout, fetchMe } = useAuth()
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (searchQuery.trim()) {
-      router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`)
+  useEffect(() => {
+    if (token && !user) fetchMe()
+  }, [token, user, fetchMe])
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false)
+      }
     }
-  }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   return (
-    <header className="sticky top-0 z-50 bg-graphite-900 border-b border-graphite-600">
-      <div className="container">
-        <div className="flex items-center gap-4 h-16">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-2.5 flex-shrink-0">
-            <div className="w-10 h-10 bg-accent rounded-xl flex items-center justify-center shadow-glow">
-              <span className="text-white font-bold text-xl">S</span>
-            </div>
-            <span className="text-xl font-bold text-txt-primary hidden sm:block tracking-tight">
-              SMART<span className="text-accent-light">PRICE</span>
-            </span>
+    <header className="sticky top-0 z-50 border-b border-[var(--bd)]" style={{ background: 'rgba(10,10,15,.85)', backdropFilter: 'blur(24px)' }}>
+      <div className="container h-14 flex items-center">
+        {/* Logo */}
+        <Link href="/" className="flex items-center gap-2.5 mr-8">
+          <div className="w-8 h-8 rounded-lg bg-[var(--ac)] flex items-center justify-center">
+            <span className="text-white font-black text-sm">SP</span>
+          </div>
+          <span className="font-extrabold text-base tracking-tight">
+            <span className="gradient-text">Smart</span>
+            <span className="text-[var(--td)]">Price</span>
+          </span>
+        </Link>
+
+        {/* Desktop Nav */}
+        <nav className="hidden md:flex items-center gap-1">
+          {navItems.map((item) => {
+            const Icon = item.icon
+            const isActive = pathname === item.href
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-[13px] font-medium transition-all ${
+                  isActive
+                    ? 'bg-[var(--ac-glow)] text-[var(--ac2)]'
+                    : 'text-[var(--td)] hover:text-[var(--t)] hover:bg-[var(--c2)]'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {item.label}
+              </Link>
+            )
+          })}
+        </nav>
+
+        {/* Right side */}
+        <div className="hidden md:flex items-center gap-2 ml-auto">
+          <Link
+            href="/about"
+            className={`p-2 rounded-lg text-[var(--td)] hover:text-[var(--t)] hover:bg-[var(--c2)] transition-all ${
+              pathname === '/about' ? 'text-[var(--ac2)]' : ''
+            }`}
+          >
+            <Info className="w-4 h-4" />
           </Link>
 
-          {/* Catalog button */}
-          <div className="relative">
-            <button
-              onClick={() => setShowCatalog(!showCatalog)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold bg-accent text-white hover:bg-accent-light transition-colors"
-            >
-              {showCatalog ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-              <span className="hidden sm:inline">Каталог</span>
-            </button>
-
-            {/* Catalog dropdown */}
-            {showCatalog && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setShowCatalog(false)} />
-                <div className="absolute top-full left-0 mt-2 w-72 bg-graphite-800 rounded-2xl border border-graphite-600 shadow-card py-2 z-50">
-                  {categories.map((cat) => {
-                    const Icon = cat.icon
-                    return (
-                      <Link
-                        key={cat.slug}
-                        href={`/search?category=${cat.slug}`}
-                        onClick={() => setShowCatalog(false)}
-                        className="flex items-center gap-3 px-4 py-3 text-txt-secondary hover:bg-graphite-700 hover:text-txt-primary transition-colors group"
-                      >
-                        <Icon className="w-5 h-5 text-txt-muted group-hover:text-accent-light" />
-                        <span className="font-medium flex-1">{cat.name}</span>
-                        <ChevronRight className="w-4 h-4 text-txt-muted group-hover:text-accent-light" />
-                      </Link>
-                    )
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Search */}
-          <form onSubmit={handleSearch} className="flex-1 max-w-2xl hidden md:block">
-            <div className="relative">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Искать товары"
-                className="w-full h-11 pl-4 pr-14 rounded-xl bg-graphite-800 border border-graphite-600 text-txt-primary placeholder:text-txt-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
-              />
+          {user ? (
+            <div className="relative" ref={dropdownRef}>
               <button
-                type="submit"
-                className="absolute right-1 top-1 bottom-1 px-4 bg-accent text-white rounded-lg hover:bg-accent-light transition-colors"
+                onClick={() => setDropdownOpen(!dropdownOpen)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-[var(--c2)] transition-all"
               >
-                <Search className="w-5 h-5" />
+                <div className="w-7 h-7 rounded-full bg-[var(--ac)]/20 flex items-center justify-center">
+                  <User className="w-4 h-4 text-[var(--ac)]" />
+                </div>
+                <span className="text-sm font-medium text-[var(--t)] max-w-[100px] truncate">
+                  {user.full_name || user.email.split('@')[0]}
+                </span>
+                {user.has_active_subscription && (
+                  <Crown className="w-3.5 h-3.5 text-[var(--ac)]" />
+                )}
               </button>
+
+              {dropdownOpen && (
+                <div className="absolute right-0 top-full mt-2 w-56 bg-[var(--c1)] border border-[var(--bd)] rounded-xl shadow-xl overflow-hidden z-50">
+                  <div className="px-4 py-3 border-b border-[var(--bd)]">
+                    <p className="text-sm font-medium text-[var(--t)]">{user.email}</p>
+                    <p className="text-xs text-[var(--td)] mt-0.5">
+                      План: {user.subscription_plan === 'free' ? 'Бесплатный' : user.subscription_plan === 'pro' ? 'Pro' : 'Business'}
+                    </p>
+                  </div>
+                  <Link href="/dashboard" onClick={() => setDropdownOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--td)] hover:bg-[var(--c2)] hover:text-[var(--t)]">
+                    <User className="w-4 h-4" /> Личный кабинет
+                  </Link>
+                  <Link href="/pricing" onClick={() => setDropdownOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--td)] hover:bg-[var(--c2)] hover:text-[var(--t)]">
+                    <CreditCard className="w-4 h-4" /> Тарифы
+                  </Link>
+                  <button
+                    onClick={() => { logout(); setDropdownOpen(false) }}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10"
+                  >
+                    <LogOut className="w-4 h-4" /> Выйти
+                  </button>
+                </div>
+              )}
             </div>
-          </form>
-
-          {/* Nav links */}
-          <nav className="hidden lg:flex items-center gap-1">
+          ) : (
             <Link
-              href="/compare"
-              className={cn(
-                'flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors',
-                pathname === '/compare' ? 'text-accent-light' : 'text-txt-secondary hover:text-txt-primary'
-              )}
+              href="/login"
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-[13px] font-medium transition-all ${
+                pathname === '/login'
+                  ? 'bg-[var(--ac)] text-white'
+                  : 'bg-[var(--c2)] text-[var(--td)] hover:text-[var(--t)] hover:bg-[var(--c3)]'
+              }`}
             >
-              <BarChart2 className="w-5 h-5" />
-              <span>Сравнение</span>
+              <LogIn className="w-4 h-4" /> Войти
             </Link>
-            <Link
-              href="/chat"
-              className={cn(
-                'flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors',
-                pathname === '/chat' ? 'text-accent-light' : 'text-txt-secondary hover:text-txt-primary'
-              )}
-            >
-              <MessageSquare className="w-5 h-5" />
-              <span>AI</span>
-            </Link>
-          </nav>
-
-          {/* User actions */}
-          <div className="flex items-center gap-1">
-            <button className="p-2.5 rounded-lg text-txt-secondary hover:text-txt-primary hover:bg-graphite-800 transition-colors">
-              <Heart className="w-5 h-5" />
-            </button>
-            <button className="p-2.5 rounded-lg text-txt-secondary hover:text-txt-primary hover:bg-graphite-800 transition-colors">
-              <User className="w-5 h-5" />
-            </button>
-
-            {/* Mobile menu */}
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-2.5 rounded-lg text-txt-secondary hover:text-txt-primary hover:bg-graphite-800"
-            >
-              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
-          </div>
+          )}
         </div>
 
-        {/* Mobile search */}
-        <form onSubmit={handleSearch} className="md:hidden pb-3">
-          <div className="relative">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Искать товары"
-              className="w-full h-11 pl-4 pr-14 rounded-xl bg-graphite-800 border border-graphite-600 text-txt-primary placeholder:text-txt-muted focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-            <button
-              type="submit"
-              className="absolute right-1 top-1 bottom-1 px-4 bg-accent text-white rounded-lg"
-            >
-              <Search className="w-5 h-5" />
-            </button>
-          </div>
-        </form>
+        {/* Mobile toggle */}
+        <button
+          onClick={() => setMobileOpen(!mobileOpen)}
+          className="md:hidden ml-auto p-2 text-[var(--td)]"
+        >
+          {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
       </div>
 
       {/* Mobile menu */}
-      {mobileMenuOpen && (
-        <div className="lg:hidden bg-graphite-800 border-t border-graphite-600">
-          <div className="container py-4 space-y-2">
-            {categories.map((cat) => {
-              const Icon = cat.icon
+      {mobileOpen && (
+        <div className="md:hidden border-t border-[var(--bd)] bg-[var(--bg2)] animate-fadeIn">
+          <div className="container py-3 flex flex-col gap-1">
+            {navItems.map((item) => {
+              const Icon = item.icon
+              const isActive = pathname === item.href
               return (
                 <Link
-                  key={cat.slug}
-                  href={`/search?category=${cat.slug}`}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl text-txt-secondary hover:bg-graphite-700 hover:text-txt-primary"
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMobileOpen(false)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                    isActive
+                      ? 'bg-[var(--ac-glow)] text-[var(--ac2)]'
+                      : 'text-[var(--td)] hover:bg-[var(--c2)]'
+                  }`}
                 >
-                  <Icon className="w-5 h-5 text-txt-muted" />
-                  <span className="font-medium">{cat.name}</span>
+                  <Icon className="w-5 h-5" />
+                  {item.label}
                 </Link>
               )
             })}
-            <div className="border-t border-graphite-600 pt-4 mt-4">
-              <Link
-                href="/compare"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl text-txt-secondary hover:bg-graphite-700"
-              >
-                <BarChart2 className="w-5 h-5 text-txt-muted" />
-                <span>Сравнение</span>
-              </Link>
-              <Link
-                href="/chat"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl text-txt-secondary hover:bg-graphite-700"
-              >
-                <MessageSquare className="w-5 h-5 text-txt-muted" />
-                <span>AI Помощник</span>
-              </Link>
+            <div className="border-t border-[var(--bd)] mt-1 pt-1">
+              {user ? (
+                <>
+                  <Link href="/dashboard" onClick={() => setMobileOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-[var(--td)] hover:bg-[var(--c2)]">
+                    <User className="w-5 h-5" /> Личный кабинет
+                  </Link>
+                  <button onClick={() => { logout(); setMobileOpen(false) }} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-red-400 hover:bg-red-500/10">
+                    <LogOut className="w-5 h-5" /> Выйти
+                  </button>
+                </>
+              ) : (
+                <Link href="/login" onClick={() => setMobileOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-[var(--ac2)] hover:bg-[var(--c2)]">
+                  <LogIn className="w-5 h-5" /> Войти
+                </Link>
+              )}
             </div>
           </div>
         </div>

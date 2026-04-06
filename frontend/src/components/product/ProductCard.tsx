@@ -18,22 +18,25 @@ interface ProductCardProps {
 }
 
 const marketplaceConfig: Record<string, { name: string; color: string; url: string }> = {
-  ozon: { name: 'Ozon', color: '#005bff', url: 'https://ozon.ru' },
+  citilink: { name: 'Ситилинк', color: '#ff6600', url: 'https://citilink.ru' },
+  regard: { name: 'Регард', color: '#e53935', url: 'https://regard.ru' },
+  aliexpress: { name: 'AliExpress', color: '#ff4747', url: 'https://aliexpress.ru' },
   wildberries: { name: 'WB', color: '#cb11ab', url: 'https://wildberries.ru' },
   yandex_market: { name: 'Я.Маркет', color: '#ffcc00', url: 'https://market.yandex.ru' },
-  aliexpress: { name: 'Ali', color: '#ff4747', url: 'https://aliexpress.ru' },
+  yandex: { name: 'Я.Маркет', color: '#ffcc00', url: 'https://market.yandex.ru' },
+  onliner: { name: 'Onliner', color: '#65cb02', url: 'https://catalog.onliner.by' },
 }
 
 const marketplaceIdToName: Record<number, string> = {
-  1: 'ozon',
+  1: 'citilink',
   2: 'wildberries',
   3: 'yandex_market',
   4: 'aliexpress',
 }
 
 function getMarketplace(product: Product) {
-  const name = product.marketplace?.name || marketplaceIdToName[product.marketplace_id] || 'ozon'
-  return marketplaceConfig[name] || marketplaceConfig.ozon
+  const name = product.marketplace?.name || marketplaceIdToName[product.marketplace_id] || 'citilink'
+  return marketplaceConfig[name] || marketplaceConfig.citilink
 }
 
 export function ProductCard({ product, showMarketplace = true, className }: ProductCardProps) {
@@ -41,6 +44,7 @@ export function ProductCard({ product, showMarketplace = true, className }: Prod
   const [imageError, setImageError] = useState(false)
   const discount = calculateDiscount(product.current_price, product.original_price)
   const mp = getMarketplace(product)
+  const reviewsCount = product.reviews_count ?? 0
 
   const handleLike = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -100,8 +104,8 @@ export function ProductCard({ product, showMarketplace = true, className }: Prod
               onClick={handleLike}
               className={cn(
                 'p-2 rounded-full backdrop-blur transition-all',
-                isLiked 
-                  ? 'bg-red-500 text-white' 
+                isLiked
+                  ? 'bg-red-500 text-white'
                   : 'bg-graphite-800/80 text-txt-secondary opacity-0 group-hover:opacity-100 hover:text-red-500'
               )}
             >
@@ -157,9 +161,9 @@ export function ProductCard({ product, showMarketplace = true, className }: Prod
               <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
               <span className="text-sm font-medium text-txt-primary">{product.rating.toFixed(1)}</span>
             </div>
-            {product.reviews_count > 0 && (
+            {reviewsCount > 0 && (
               <span className="text-sm text-txt-muted">
-                {product.reviews_count.toLocaleString('ru-RU')} отзывов
+                {reviewsCount.toLocaleString('ru-RU')} отзывов
               </span>
             )}
           </div>

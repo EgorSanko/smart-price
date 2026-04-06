@@ -2,19 +2,24 @@
  * About page - фиолетово-графитовая тема
  */
 
+import type { Metadata } from 'next'
 import { Github, Mail, Linkedin, Code, Database, Brain, Zap } from 'lucide-react'
+
+export const metadata: Metadata = {
+  title: 'О проекте',
+}
 
 const techStack = [
   { name: 'Next.js 14', category: 'Frontend', icon: Code },
   { name: 'FastAPI', category: 'Backend', icon: Zap },
   { name: 'PostgreSQL', category: 'Database', icon: Database },
-  { name: 'Claude AI', category: 'AI/ML', icon: Brain },
+  { name: 'Gemini AI', category: 'AI/ML', icon: Brain },
 ]
 
 const features = [
   {
     title: 'Мета-поиск',
-    description: 'Поиск по 4+ маркетплейсам одновременно: Ozon, Wildberries, Яндекс Маркет, AliExpress',
+    description: 'Поиск по 6 маркетплейсам одновременно: Яндекс Маркет, Wildberries, Ситилинк, Регард, AliExpress, Onliner',
   },
   {
     title: 'Сравнение цен',
@@ -26,7 +31,7 @@ const features = [
   },
   {
     title: 'AI-ассистент',
-    description: 'Умный помощник на базе Claude для поиска товаров и рекомендаций',
+    description: 'Умный помощник на базе AI для поиска товаров и рекомендаций',
   },
   {
     title: 'Уведомления',
@@ -55,12 +60,12 @@ export default function AboutPage() {
           <h2 className="text-2xl font-bold text-txt-primary mb-4">Что такое Smart Price?</h2>
           <div className="prose prose-invert max-w-none text-txt-secondary space-y-4">
             <p>
-              Smart Price — это дипломный проект, представляющий собой современную систему метапоиска товаров 
+              Smart Price — это дипломный проект, представляющий собой современную систему метапоиска товаров
               на крупнейших российских маркетплейсах с использованием искусственного интеллекта для анализа цен.
             </p>
             <p>
-              Сервис позволяет пользователям находить лучшие цены на товары, сравнивать предложения 
-              с разных площадок, отслеживать историю изменения цен и получать умные рекомендации 
+              Сервис позволяет пользователям находить лучшие цены на товары, сравнивать предложения
+              с разных площадок, отслеживать историю изменения цен и получать умные рекомендации
               от AI-ассистента.
             </p>
           </div>

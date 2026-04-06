@@ -1,290 +1,141 @@
-# Current Project Structure
+# Smart Price — Current Project Structure
 
-## Полная структура проекта
+> Updated: 2026-03-18
+
+## Architecture
 
 ```
 smart-price/
-│
-├── backend/                          # Python Backend (FastAPI)
+├── backend/                    # FastAPI Backend (Python 3.11)
 │   ├── app/
-│   │   ├── __init__.py
-│   │   ├── main.py                   # FastAPI application entry
-│   │   ├── config.py                 # Pydantic Settings
-│   │   │
-│   │   ├── api/                      # API Layer
+│   │   ├── agents/             # AI Agents
 │   │   │   ├── __init__.py
-│   │   │   └── v1/
-│   │   │       ├── __init__.py
-│   │   │       ├── router.py         # Main API router
-│   │   │       ├── deps.py           # Dependency injection
-│   │   │       └── endpoints/
-│   │   │           ├── __init__.py
-│   │   │           ├── health.py     # Health checks
-│   │   │           ├── products.py   # Product CRUD
-│   │   │           ├── search.py     # Search endpoints
-│   │   │           ├── analytics.py  # Price analytics
-│   │   │           └── chat.py       # AI chat endpoint
-│   │   │
-│   │   ├── core/                     # Core utilities
-│   │   │   ├── __init__.py
-│   │   │   ├── security.py           # JWT, password hashing
-│   │   │   └── exceptions.py         # Custom exceptions
-│   │   │
-│   │   ├── db/                       # Database Layer
-│   │   │   ├── __init__.py           # ✅ Package exports
-│   │   │   ├── base.py               # ✅ SQLAlchemy Base class
-│   │   │   ├── session.py            # ✅ Async session factory
-│   │   │   └── models/
-│   │   │       ├── __init__.py       # ✅ Export all models
-│   │   │       ├── marketplace.py    # ✅ Marketplace model
-│   │   │       ├── category.py       # ✅ Category model
-│   │   │       ├── product.py        # ✅ Product model
-│   │   │       ├── price_history.py  # ✅ PriceHistory model
-│   │   │       ├── product_match.py  # ✅ ProductMatch model
-│   │   │       ├── user.py           # ✅ User model
-│   │   │       └── alert.py          # ✅ PriceAlert, SearchHistory
-│   │   │
-│   │   ├── schemas/                  # Pydantic Schemas
-│   │   │   ├── __init__.py
-│   │   │   ├── product.py            # Product schemas
-│   │   │   ├── search.py             # Search schemas
-│   │   │   ├── user.py               # User schemas
-│   │   │   └── analytics.py          # Analytics schemas
-│   │   │
-│   │   ├── services/                 # Business Logic
-│   │   │   ├── __init__.py
-│   │   │   ├── product_service.py    # Product CRUD operations
-│   │   │   ├── search_service.py     # Search logic
-│   │   │   └── analytics_service.py  # Price analytics
-│   │   │
-│   │   ├── scrapers/                 # Marketplace Scrapers
-│   │   │   ├── __init__.py
-│   │   │   ├── base.py               # BaseScraper abstract class
-│   │   │   ├── ozon.py               # Ozon scraper
-│   │   │   ├── wildberries.py        # Wildberries scraper
-│   │   │   └── yandex_market.py      # Yandex.Market scraper
-│   │   │
-│   │   ├── ml/                       # ML Components
-│   │   │   ├── __init__.py
-│   │   │   ├── embeddings/
-│   │   │   │   ├── __init__.py
-│   │   │   │   └── encoder.py        # Text/Image embeddings
-│   │   │   ├── matching/
-│   │   │   │   ├── __init__.py
-│   │   │   │   └── matcher.py        # Product matching
-│   │   │   ├── forecasting/
-│   │   │   │   ├── __init__.py
-│   │   │   │   └── predictor.py      # Price forecasting
-│   │   │   └── anomaly/
-│   │   │       ├── __init__.py
-│   │   │       └── detector.py       # Anomaly detection
-│   │   │
-│   │   └── agents/                   # AI Agents
-│   │       ├── __init__.py
-│   │       ├── shopping_agent.py     # Main shopping assistant
-│   │       └── tools/
-│   │           ├── __init__.py
-│   │           ├── search_tool.py
-│   │           ├── compare_tool.py
-│   │           └── analyze_tool.py
-│   │
-│   ├── tests/                        # Tests
-│   │   ├── __init__.py
-│   │   ├── conftest.py               # Pytest fixtures
-│   │   ├── test_api/
-│   │   │   ├── __init__.py
-│   │   │   ├── test_health.py
-│   │   │   └── test_products.py
-│   │   └── test_services/
-│   │       ├── __init__.py
-│   │       └── test_product_service.py
-│   │
-│   ├── alembic/                      # Database Migrations
-│   │   ├── env.py                    # ✅ Async migration env
-│   │   ├── script.py.mako            # ✅ Migration template
-│   │   ├── README                    # ✅ Migration docs
-│   │   └── versions/
-│   │       └── 001_initial_schema.py # ✅ Initial migration
-│   │
-│   ├── alembic.ini                   # ✅ Alembic config
-│   ├── pyproject.toml                # Dependencies (Poetry)
-│   ├── Dockerfile
-│   └── .env.example
-│
-├── frontend/                         # Next.js Frontend
-│   └── ...
-│
-├── docker/                           # Docker Configuration
-│   └── ...
-│
-├── docs/                             # Documentation
-│   └── ...
-│
-└── README.md
+│   │   │   ├── base_agent.py   # Base agent (Anthropic SDK, tool_use + streaming)
+│   │   │   ├── shopping_agent.py # ЕГОРУШКА — main shopping AI assistant
+│   │   │   └── tools/
+│   │   │       └── __init__.py
+│   │   ├── api/v1/
+│   │   │   ├── deps.py         # FastAPI dependencies
+│   │   │   ├── router.py       # API router (all endpoints registered)
+│   │   │   └── endpoints/
+│   │   │       ├── chat.py     # POST /chat — AI chat with SSE
+│   │   │       ├── compare.py  # POST /ai/compare — AI comparison
+│   │   │       ├── health.py   # GET /health — health checks
+│   │   │       ├── parsers.py  # GET /parsers — marketplace list
+│   │   │       ├── products.py # CRUD /products
+│   │   │       ├── search.py   # GET /search — DB search
+│   │   │       └── search_stream.py # GET /live-search/stream — live SSE
+│   │   ├── core/
+│   │   │   ├── config.py       # Re-export from app.config
+│   │   │   └── exceptions.py   # Exception hierarchy
+│   │   ├── db/
+│   │   │   ├── base.py         # SQLAlchemy Base + Mixins
+│   │   │   ├── session.py      # Async session factory
+│   │   │   └── models/         # 9 ORM models (Mapped style)
+│   │   │       ├── alert.py        # PriceAlert, SearchHistory
+│   │   │       ├── category.py     # Category (hierarchical)
+│   │   │       ├── chat.py         # ChatSession, ChatMessage ← NEW
+│   │   │       ├── marketplace.py  # Marketplace
+│   │   │       ├── price_history.py # PriceHistory
+│   │   │       ├── product.py      # Product (GIN index)
+│   │   │       ├── product_match.py # ProductMatch
+│   │   │       ├── scraping_job.py # ScrapingJob ← NEW
+│   │   │       └── user.py         # User
+│   │   ├── ml/                 # ML components (partial)
+│   │   ├── schemas/
+│   │   │   ├── product.py      # Pydantic schemas
+│   │   │   └── search.py       # Search schemas
+│   │   ├── scrapers/
+│   │   │   ├── __init__.py     # Lazy imports registry
+│   │   │   ├── manager.py      # ScrapingManager (parallel search)
+│   │   │   ├── onliner.py      # Onliner BY (httpx, API-based)
+│   │   │   ├── yandex_market.py # Yandex Market (HTML parsing)
+│   │   │   ├── wildberries.py  # Wildberries (API-based)
+│   │   │   ├── ozon.py         # Ozon (browser-based)
+│   │   │   ├── base.py         # Base scraper classes
+│   │   │   ├── antidetect.py   # Anti-detection middleware
+│   │   │   └── utils.py        # Scraping utilities
+│   │   ├── services/
+│   │   │   ├── analytics_service.py # Scraping job tracking ← NEW
+│   │   │   ├── product_service.py   # Product CRUD
+│   │   │   └── search_service.py    # Search logic
+│   │   ├── config.py           # Main config (pydantic-settings)
+│   │   └── main.py             # FastAPI app factory
+│   ├── alembic/                # Database migrations
+│   ├── scripts/
+│   │   ├── run_dev.py          # Local dev server
+│   │   └── seed_data.py        # Test data seeder
+│   ├── tests/                  # Pytest suite (34 tests)
+│   │   ├── conftest.py         # SQLite fixtures with JSONB compat
+│   │   ├── test_config.py      # Settings tests
+│   │   ├── test_api/           # API endpoint tests
+│   │   ├── test_models/        # ORM model tests
+│   │   └── test_scrapers/      # Scraper tests
+│   ├── pyproject.toml          # Project config & deps
+│   └── Dockerfile              # Multi-stage build
+├── frontend/                   # Next.js 14 Frontend
+│   ├── src/app/                # App Router pages
+│   │   ├── page.tsx            # Home — search with SSE streaming
+│   │   ├── chat/page.tsx       # AI chat (ЕГОРУШКА)
+│   │   ├── compare/page.tsx    # Product comparison ← NEW
+│   │   ├── about/page.tsx      # About page
+│   │   ├── docs/page.tsx       # Documentation
+│   │   └── layout.tsx          # Root layout (Header + Footer)
+│   ├── src/components/         # React components
+│   │   ├── layout/Header.tsx   # Navigation header
+│   │   ├── layout/Footer.tsx   # Footer
+│   │   ├── product/ProductCard.tsx # Product card
+│   │   └── search/FilterPanel.tsx  # Search filters
+│   ├── src/lib/                # API client & utilities
+│   └── src/types/              # TypeScript interfaces
+├── docker/                     # Docker Compose stack
+├── docs/                       # Documentation
+├── AUDIT_LOG.md                # Audit and progress log
+└── README.md                   # Project overview
 ```
 
----
+## API Endpoints (19 routes)
 
-## Статус реализации
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/v1/health | Health check |
+| GET | /api/v1/health/ready | Readiness probe |
+| GET | /api/v1/health/live | Liveness probe |
+| GET | /api/v1/parsers | List marketplace parsers |
+| GET | /api/v1/live-search/stream | SSE live marketplace search |
+| GET | /api/v1/search | Database product search |
+| GET | /api/v1/search/suggest | Autocomplete suggestions |
+| POST | /api/v1/chat | AI chat (ЕГОРУШКА) with SSE |
+| POST | /api/v1/ai/compare | AI product comparison |
+| GET | /api/v1/products | List products |
+| POST | /api/v1/products | Create product |
+| POST | /api/v1/products/upsert | Create or update product |
+| GET | /api/v1/products/{id} | Get product |
+| PUT | /api/v1/products/{id} | Update product |
+| DELETE | /api/v1/products/{id} | Delete product |
+| GET | /api/v1/products/{id}/history | Price history |
 
-### Sprint 1: Project Setup ✅
+## Database Models (11)
 
-| Компонент | Статус | Файл |
-|-----------|--------|------|
-| pyproject.toml | ✅ | `backend/pyproject.toml` |
-| docker-compose.dev.yml | ✅ | `docker/docker-compose.dev.yml` |
-| config.py | ✅ | `backend/app/config.py` |
-| main.py | ✅ | `backend/app/main.py` |
+| Model | Table | Description |
+|-------|-------|-------------|
+| Product | products | Products with prices, marketplace references |
+| Marketplace | marketplaces | Marketplace configurations |
+| Category | categories | Hierarchical product categories |
+| PriceHistory | price_histories | Price tracking over time |
+| ProductMatch | product_matches | Cross-marketplace product matching |
+| User | users | User accounts |
+| PriceAlert | price_alerts | User price alerts |
+| SearchHistory | search_histories | Search query tracking |
+| ChatSession | chat_sessions | AI chat sessions |
+| ChatMessage | chat_messages | Individual chat messages |
+| ScrapingJob | scraping_jobs | Scraping task tracking |
 
-### Sprint 2: Database Models ✅
+## Tech Stack
 
-| Компонент | Статус | Файл |
-|-----------|--------|------|
-| db/base.py | ✅ | `backend/app/db/base.py` |
-| db/session.py | ✅ | `backend/app/db/session.py` |
-| db/__init__.py | ✅ | `backend/app/db/__init__.py` |
-| models/marketplace.py | ✅ | `backend/app/db/models/marketplace.py` |
-| models/category.py | ✅ | `backend/app/db/models/category.py` |
-| models/product.py | ✅ | `backend/app/db/models/product.py` |
-| models/price_history.py | ✅ | `backend/app/db/models/price_history.py` |
-| models/product_match.py | ✅ | `backend/app/db/models/product_match.py` |
-| models/user.py | ✅ | `backend/app/db/models/user.py` |
-| models/alert.py | ✅ | `backend/app/db/models/alert.py` |
-| models/__init__.py | ✅ | `backend/app/db/models/__init__.py` |
-| alembic.ini | ✅ | `backend/alembic.ini` |
-| alembic/env.py | ✅ | `backend/alembic/env.py` |
-| alembic/script.py.mako | ✅ | `backend/alembic/script.py.mako` |
-| Initial migration | ✅ | `backend/alembic/versions/001_initial_schema.py` |
-
-### Sprint 3: Scrapers & Celery ⏳
-
-| Компонент | Статус |
-|-----------|--------|
-| scrapers/base.py | ⏳ |
-| scrapers/ozon.py | ⏳ |
-| scrapers/wildberries.py | ⏳ |
-| Celery tasks | ⏳ |
-
-### Sprint 4: Search & API ⏳
-
-| Компонент | Статус |
-|-----------|--------|
-| Full-text search | ⏳ |
-| Qdrant integration | ⏳ |
-| Hybrid search | ⏳ |
-| API endpoints | ⏳ |
-
----
-
-## Модели БД — ERD
-
-```
-┌───────────────────┐       ┌───────────────────┐
-│   Marketplace     │       │     Category      │
-├───────────────────┤       ├───────────────────┤
-│ id                │       │ id                │
-│ name (unique)     │       │ name              │
-│ display_name      │       │ slug (unique)     │
-│ base_url          │       │ parent_id ────────┼──┐
-│ is_active         │       │ level             │  │
-│ config (JSONB)    │       │ description       │  │
-└─────────┬─────────┘       └─────────┬─────────┘  │
-          │                           │            │
-          │ 1:N                       │ 1:N        │ self-ref
-          ▼                           ▼            │
-┌───────────────────────────────────────────────┐  │
-│                   Product                      │◄─┘
-├───────────────────────────────────────────────┤
-│ id                                             │
-│ external_id                                    │
-│ marketplace_id ─────────────────────────────►  │
-│ title                                          │
-│ description                                    │
-│ brand                                          │
-│ category_id ────────────────────────────────►  │
-│ current_price                                  │
-│ original_price                                 │
-│ url, image_url, images[]                       │
-│ rating, reviews_count                          │
-│ specs (JSONB)                                  │
-│ is_available                                   │
-│ seller_name, seller_rating                     │
-│ barcode                                        │
-│ last_scraped_at                                │
-└──────────┬────────────────────────────────────┘
-           │
-           │ 1:N                    1:N
-           ▼                         │
-┌───────────────────┐    ┌───────────────────────┐
-│   PriceHistory    │    │    ProductMatch       │
-├───────────────────┤    ├───────────────────────┤
-│ id                │    │ id                    │
-│ product_id ◄──────┤    │ canonical_product_id  │
-│ price             │    │ matched_product_id    │
-│ original_price    │    │ confidence_score      │
-│ currency          │    │ match_method          │
-│ recorded_at       │    │ verified              │
-└───────────────────┘    └───────────────────────┘
-
-┌───────────────────┐       ┌───────────────────┐
-│       User        │       │    PriceAlert     │
-├───────────────────┤       ├───────────────────┤
-│ id                │       │ id                │
-│ email (unique)    │──1:N──│ user_id ◄─────────┤
-│ hashed_password   │       │ product_id ◄──────┤
-│ is_active         │       │ target_price      │
-│ is_verified       │       │ alert_type        │
-│ is_superuser      │       │ status            │
-│ full_name         │       │ triggered_at      │
-│ oauth_provider    │       └───────────────────┘
-│ oauth_id          │
-│ last_login_at     │       ┌───────────────────┐
-└─────────┬─────────┘       │  SearchHistory    │
-          │                 ├───────────────────┤
-          │ 1:N             │ id                │
-          └────────────────►│ user_id           │
-                            │ query             │
-                            │ filters (JSONB)   │
-                            │ results_count     │
-                            │ session_id        │
-                            │ clicked_product_id│
-                            └───────────────────┘
-```
-
----
-
-## Команды для работы с миграциями
-
-```bash
-# Применить все миграции
-docker exec smart_price_backend alembic upgrade head
-
-# Создать новую миграцию
-docker exec smart_price_backend alembic revision --autogenerate -m "description"
-
-# Откатить последнюю миграцию
-docker exec smart_price_backend alembic downgrade -1
-
-# Посмотреть текущую версию
-docker exec smart_price_backend alembic current
-
-# История миграций
-docker exec smart_price_backend alembic history --verbose
-```
-
----
-
-## Следующие шаги
-
-### Sprint 3: Scrapers & Celery
-- [ ] `scrapers/base.py` — Базовый класс парсера
-- [ ] `scrapers/ozon.py` — Парсер Ozon
-- [ ] `scrapers/wildberries.py` — Парсер Wildberries
-- [ ] Celery конфигурация
-- [ ] Задачи для фонового парсинга
-
-### Sprint 4: Search & API
-- [ ] `services/search_service.py` — Full-text search
-- [ ] Qdrant интеграция — Vector search
-- [ ] `services/hybrid_search.py` — Комбинированный поиск
-- [ ] API endpoints для поиска и товаров
+- **Backend:** FastAPI, SQLAlchemy 2.0 (async), PostgreSQL, Redis, Celery, Anthropic SDK
+- **Frontend:** Next.js 14, TypeScript strict, Tailwind CSS, SSE streaming
+- **AI:** Claude Haiku (tool_use for search), SSE streaming responses
+- **Scraping:** httpx (Onliner API), HTML regex (Yandex), Scrapling (WB/Ozon)
+- **Infrastructure:** Docker Compose, Qdrant, ClickHouse, Nginx
+- **Testing:** pytest + pytest-asyncio, 34 tests, SQLite in-memory

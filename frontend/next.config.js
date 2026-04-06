@@ -1,32 +1,9 @@
-/** @type {import('next').NextConfig} */
+/** @type {import('n/** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'export',
+  trailingSlash: true,
   images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'cdn1.ozone.ru',
-      },
-      {
-        protocol: 'https',
-        hostname: '*.wbbasket.ru',
-      },
-      {
-        protocol: 'https',
-        hostname: 'avatars.mds.yandex.net',
-      },
-      {
-        protocol: 'https',
-        hostname: 'ae01.alicdn.com',
-      },
-    ],
-  },
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: 'http://localhost:8000/api/:path*',
-      },
-    ]
+    unoptimized: true,
   },
 }
 

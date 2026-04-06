@@ -1,28 +1,16 @@
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
-import { Header, Footer } from '@/components/layout'
-import { Providers } from './providers'
 import './globals.css'
-
-const inter = Inter({ subsets: ['latin', 'cyrillic'] })
+import type { Metadata } from 'next'
+import { Providers } from './providers'
+import { Header } from '@/components/layout/Header'
+import { Footer } from '@/components/layout/Footer'
 
 export const metadata: Metadata = {
   title: {
+    default: 'Smart Price — Поиск лучших цен',
     template: '%s | Smart Price',
-    default: 'Smart Price — Умный поиск товаров',
   },
-  description:
-    'AI-powered метапоиск товаров с интеллектуальным анализом цен на Ozon, Wildberries, Яндекс Маркет и AliExpress',
-  keywords: [
-    'поиск товаров',
-    'сравнение цен',
-    'ozon',
-    'wildberries',
-    'яндекс маркет',
-    'aliexpress',
-    'скидки',
-    'акции',
-  ],
+  description: 'AI-метапоиск товаров по маркетплейсам России и Беларуси. Сравнение цен, AI-консультант, поиск лучших предложений.',
+  icons: { icon: '/favicon.ico' },
 }
 
 export default function RootLayout({
@@ -32,13 +20,16 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ru">
-      <body className={inter.className}>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+      </head>
+      <body className="min-h-screen flex flex-col">
         <Providers>
-          <div className="min-h-screen flex flex-col">
-            <Header />
-            <main className="flex-1">{children}</main>
-            <Footer />
-          </div>
+          <Header />
+          <main className="flex-1">{children}</main>
+          <Footer />
         </Providers>
       </body>
     </html>
