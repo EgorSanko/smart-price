@@ -16,6 +16,7 @@ from app.schemas.analyze import (
     OfferLite,
     PriceStats,
 )
+from app.scrapers.ai_relevance_filter import ai_filter_relevant
 from app.scrapers.manager import ScrapingManager
 from app.services import cleanup
 
@@ -70,7 +71,24 @@ class PriceAnalyzer:
         logger.info("price_analyzer_scraped", query=query, region=region, total=len(all_raw))
 
         # ── 4. Filter + clean ─────────────────────────────────────────
+        # Stage 1: fast regex filter (cheap, removes obvious mismatches).
         filtered = cleanup.fast_filter(all_raw, query)
+
+        # Stage 2: AI relevance filter — same one used by live-search. Without
+        # it, analyze was returning things like "Xiaomi Smart Laser Measure"
+        # for a "Xiaomi Smart Projector" query. Failures degrade to unfiltered
+        # (function catches its own exceptions).
+        try:
+            filtered = await ai_filter_relevant(filtered, query)
+        except Exception as ai_err:
+            logger.warning(
+                "price_analyzer_ai_filter_error",
+                query=query,
+                region=region,
+                error=str(ai_err),
+            )
+
+        # Stage 3: price sanity — outliers and zero-priced items.
         filtered = cleanup.remove_price_outliers(filtered)
         filtered = [p for p in filtered if (p.get("price_num") or 0) > 0]
 
