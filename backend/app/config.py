@@ -6,7 +6,7 @@ Environment variables are loaded from .env file and can be overridden.
 from functools import lru_cache
 from typing import Any
 
-from pydantic import PostgresDsn, RedisDsn, field_validator
+from pydantic import PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,11 +28,17 @@ class Settings(BaseSettings):
     APP_NAME: str = "Smart Price"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
+    ENVIRONMENT: str = "development"
     SECRET_KEY: str = "change-me-in-production"
+    LOG_LEVEL: str = "INFO"
 
     # API
     API_V1_PREFIX: str = "/api/v1"
-    CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:8000",
+    ]
 
     # Pagination
     DEFAULT_PAGE_SIZE: int = 20
@@ -41,10 +47,11 @@ class Settings(BaseSettings):
     # Database
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_PORT: int = 5432
-    POSTGRES_USER: str = "user"
-    POSTGRES_PASSWORD: str = "password"
+    POSTGRES_USER: str = "smartprice"
+    POSTGRES_PASSWORD: str = "smartprice_secret"
     POSTGRES_DB: str = "smartprice"
     DATABASE_URL: str | None = None
+    DB_ECHO: bool = False
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
@@ -64,7 +71,11 @@ class Settings(BaseSettings):
         )
 
     # Redis
-    REDIS_URL: RedisDsn = "redis://localhost:6379/0"  # type: ignore[assignment]
+    REDIS_URL: str = "redis://localhost:6379/0"
+
+    # Celery
+    CELERY_BROKER_URL: str = "redis://localhost:6379/1"
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
 
     # Qdrant
     QDRANT_HOST: str = "localhost"
@@ -76,8 +87,24 @@ class Settings(BaseSettings):
     CLICKHOUSE_PORT: int = 8123
     CLICKHOUSE_DB: str = "smartprice"
 
-    # External APIs
+    # External APIs — OpenRouter (OpenAI-compatible)
+    OPENROUTER_API_KEY: str | None = None
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    AI_MODEL: str = "google/gemini-2.0-flash-001"
+    # Legacy — kept for backward compat
     ANTHROPIC_API_KEY: str | None = None
+    FIRECRAWL_API_KEY: str | None = None
+    APIFY_API_TOKEN: str | None = None
+
+    # Auth / JWT
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    JWT_ALGORITHM: str = "HS256"
+
+    # YooKassa
+    YOOKASSA_SHOP_ID: str = ""
+    YOOKASSA_SECRET_KEY: str = ""
+    YOOKASSA_RETURN_URL: str = "https://5-42-123-75.nip.io/payment/success"
 
     # Scraping
     SCRAPER_USER_AGENT: str = (
@@ -85,17 +112,18 @@ class Settings(BaseSettings):
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/120.0.0.0 Safari/537.36"
     )
-    SCRAPER_RATE_LIMIT: float = 1.0  # requests per second
+    SCRAPER_RATE_LIMIT: float = 1.0
     SCRAPER_TIMEOUT: int = 30
+    SCRAPING_CONCURRENCY: int = 3
+    SCRAPING_DELAY_MIN: float = 1.0
+    SCRAPING_DELAY_MAX: float = 3.0
+    PROXY_LIST: str | None = None
+    SCRAPER_PROXY: str | None = None  # e.g. socks5://127.0.0.1:1080
 
 
 @lru_cache
 def get_settings() -> Settings:
-    """Get cached settings instance.
-
-    Returns:
-        Singleton Settings instance.
-    """
+    """Get cached settings instance."""
     return Settings()
 
 

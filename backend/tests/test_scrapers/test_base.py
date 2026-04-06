@@ -1,224 +1,382 @@
-"""Tests for base scraper classes."""
+"""Tests for base scraper framework.
+
+Tests cover:
+- Adaptive rate limiting (backoff on blocks, recovery on success)
+- Block detection integration
+- Proxy rotation integration
+- HttpScraper fetch with mocked responses
+- DynamicScraper fetch with mocked StealthyFetcher
+"""
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
 import pytest
 
-from app.scrapers.base import (
-    BaseScraper,
-    BlockedError,
-    PlaywrightScraper,
-    RateLimitError,
-    ScraperError,
+from tests.test_scrapers.conftest import (
+    BLOCKED_RESPONSE_403,
+    CAPTCHA_RESPONSE,
+    WB_SEARCH_JSON,
+    MockSelector,
 )
 
 
-class ConcreteScraper(BaseScraper):
-    """Concrete implementation for testing."""
+# ---------------------------------------------------------------------------
+# Concrete test scraper (minimal implementation for testing base logic)
+# ---------------------------------------------------------------------------
 
-    marketplace_name = "test"
-    base_url = "https://test.example.com"
-    rate_limit = 10.0  # Fast for tests
 
-    async def search(self, query: str, page: int = 1, **kwargs):
+class _TestHttpScraper:
+    """Minimal HttpScraper subclass for testing."""
+
+    marketplace_name = "test_http"
+    base_url = "https://test.com"
+    rate_limit = 100.0  # Fast for tests
+    max_retries = 2
+
+    async def search(self, query, *, page=1):
         return []
 
-    async def get_product(self, product_id: str):
+    async def get_product(self, product_id):
         return None
 
-    async def get_category(self, category_url: str, max_pages: int = 10):
-        yield  # Empty generator
+
+class _TestDynamicScraper:
+    """Minimal DynamicScraper subclass for testing."""
+
+    marketplace_name = "test_dynamic"
+    base_url = "https://test.com"
+    rate_limit = 100.0
+    max_retries = 2
+
+    async def search(self, query, *, page=1):
+        return []
+
+    async def get_product(self, product_id):
+        return None
 
 
-class TestBaseScraper:
-    """Tests for BaseScraper class."""
-
-    @pytest.fixture
-    def scraper(self) -> ConcreteScraper:
-        """Create test scraper instance."""
-        return ConcreteScraper()
-
-    def test_init_without_proxy(self, scraper: ConcreteScraper) -> None:
-        """Should initialize without proxy."""
-        assert scraper._proxy_url is None
-        assert scraper._client is None
-        assert scraper.marketplace_name == "test"
-
-    def test_init_with_proxy(self) -> None:
-        """Should initialize with proxy."""
-        proxy = "http://proxy:8080"
-        scraper = ConcreteScraper(proxy_url=proxy)
-        assert scraper._proxy_url == proxy
-
-    def test_get_headers(self, scraper: ConcreteScraper) -> None:
-        """Should return proper headers."""
-        headers = scraper._get_headers()
-
-        assert "User-Agent" in headers
-        assert "Mozilla" in headers["User-Agent"]
-        assert "Accept" in headers
-        assert "Accept-Language" in headers
-        assert "ru-RU" in headers["Accept-Language"]
-
-    @pytest.mark.asyncio
-    async def test_get_client_creates_client(self, scraper: ConcreteScraper) -> None:
-        """Should create HTTP client on first call."""
-        assert scraper._client is None
-
-        client = await scraper._get_client()
-
-        assert client is not None
-        assert scraper._client is client
-        await scraper.close()
-
-    @pytest.mark.asyncio
-    async def test_get_client_reuses_client(self, scraper: ConcreteScraper) -> None:
-        """Should reuse existing client."""
-        client1 = await scraper._get_client()
-        client2 = await scraper._get_client()
-
-        assert client1 is client2
-        await scraper.close()
-
-    @pytest.mark.asyncio
-    async def test_rate_limit_wait(self, scraper: ConcreteScraper) -> None:
-        """Should wait between requests."""
-        scraper.rate_limit = 2.0  # 2 requests per second
-
-        start = asyncio.get_event_loop().time()
-        await scraper._rate_limit_wait()
-        await scraper._rate_limit_wait()
-        elapsed = asyncio.get_event_loop().time() - start
-
-        # Should wait at least 0.5 seconds between calls
-        assert elapsed >= 0.4  # Some tolerance
-
-    @pytest.mark.asyncio
-    async def test_fetch_success(self, scraper: ConcreteScraper) -> None:
-        """Should fetch HTML successfully."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.text = "<html>test</html>"
-        mock_response.raise_for_status = MagicMock()
-
-        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = mock_response
-
-            result = await scraper.fetch("https://example.com")
-
-            assert result == "<html>test</html>"
-            mock_get.assert_called_once()
-
-        await scraper.close()
-
-    @pytest.mark.asyncio
-    async def test_fetch_rate_limit_error(self, scraper: ConcreteScraper) -> None:
-        """Should raise RateLimitError on 429."""
-        mock_response = MagicMock()
-        mock_response.status_code = 429
-
-        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = mock_response
-
-            with pytest.raises(RateLimitError):
-                await scraper.fetch("https://example.com")
-
-        await scraper.close()
-
-    @pytest.mark.asyncio
-    async def test_fetch_blocked_error(self, scraper: ConcreteScraper) -> None:
-        """Should raise BlockedError on 403."""
-        mock_response = MagicMock()
-        mock_response.status_code = 403
-
-        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = mock_response
-
-            with pytest.raises(BlockedError):
-                await scraper.fetch("https://example.com")
-
-        await scraper.close()
-
-    @pytest.mark.asyncio
-    async def test_fetch_json(self, scraper: ConcreteScraper) -> None:
-        """Should fetch and parse JSON."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"key": "value"}
-        mock_response.raise_for_status = MagicMock()
-
-        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = mock_response
-
-            result = await scraper.fetch_json("https://api.example.com/data")
-
-            assert result == {"key": "value"}
-
-        await scraper.close()
-
-    @pytest.mark.asyncio
-    async def test_context_manager(self) -> None:
-        """Should work as async context manager."""
-        async with ConcreteScraper() as scraper:
-            assert isinstance(scraper, ConcreteScraper)
-
-        # Client should be closed
-        assert scraper._client is None
-
-    @pytest.mark.asyncio
-    async def test_close(self, scraper: ConcreteScraper) -> None:
-        """Should close HTTP client."""
-        await scraper._get_client()
-        assert scraper._client is not None
-
-        await scraper.close()
-        assert scraper._client is None
+# ---------------------------------------------------------------------------
+# Adaptive rate limiting
+# ---------------------------------------------------------------------------
 
 
-class TestScraperErrors:
-    """Tests for scraper exception hierarchy."""
+class TestAdaptiveRateLimiting:
+    """Tests for adaptive rate control in BaseScraper."""
 
-    def test_scraper_error_is_base(self) -> None:
-        """ScraperError should be base exception."""
-        assert issubclass(RateLimitError, ScraperError)
-        assert issubclass(BlockedError, ScraperError)
+    def _make_scraper(self):
+        """Create a BaseScraper-like object for testing rate logic."""
+        # We test rate logic directly on a scraper instance
+        # Import here to allow patching
+        from app.scrapers.base import HttpScraper
 
-    def test_rate_limit_error(self) -> None:
-        """RateLimitError should carry message."""
-        error = RateLimitError("Too many requests")
-        assert str(error) == "Too many requests"
-
-    def test_blocked_error(self) -> None:
-        """BlockedError should carry message."""
-        error = BlockedError("IP blocked")
-        assert str(error) == "IP blocked"
-
-
-class TestPlaywrightScraper:
-    """Tests for PlaywrightScraper class."""
-
-    def test_init_headless(self) -> None:
-        """Should initialize with headless mode."""
-
-        class ConcretePlaywrightScraper(PlaywrightScraper):
+        class TestScraper(HttpScraper):
             marketplace_name = "test"
             base_url = "https://test.com"
+            rate_limit = 10.0  # 10 req/s baseline
+            max_retries = 1
 
-            async def search(self, query, page=1, **kwargs):
+            async def search(self, query, *, page=1):
                 return []
 
             async def get_product(self, product_id):
                 return None
 
-            async def get_category(self, category_url, max_pages=10):
-                yield
+        with patch("app.scrapers.base._get_proxy_rotator"):
+            scraper = TestScraper()
+        return scraper
 
-        scraper = ConcretePlaywrightScraper(headless=True)
-        assert scraper._headless is True
+    def test_initial_rate(self) -> None:
+        scraper = self._make_scraper()
+        assert scraper._current_rate == 10.0
 
-        scraper = ConcretePlaywrightScraper(headless=False)
-        assert scraper._headless is False
+    def test_rate_halves_on_block(self) -> None:
+        scraper = self._make_scraper()
+        scraper._on_block("http_403")
+
+        assert scraper._current_rate == pytest.approx(5.0)
+
+    def test_rate_halves_multiple_times(self) -> None:
+        scraper = self._make_scraper()
+        scraper._on_block("captcha")
+        scraper._on_block("rate_limited")
+
+        assert scraper._current_rate == pytest.approx(2.5)
+
+    def test_rate_does_not_go_below_minimum(self) -> None:
+        scraper = self._make_scraper()
+        for _ in range(20):
+            scraper._on_block("blocked")
+
+        assert scraper._current_rate >= scraper._min_rate
+
+    def test_rate_recovers_after_successes(self) -> None:
+        scraper = self._make_scraper()
+        scraper._on_block("http_403")  # Rate → 5.0
+
+        for _ in range(10):
+            scraper._on_success()
+
+        # Should have recovered: 5.0 * 1.2 = 6.0
+        assert scraper._current_rate == pytest.approx(6.0)
+
+    def test_rate_does_not_exceed_baseline(self) -> None:
+        scraper = self._make_scraper()
+        for _ in range(100):
+            scraper._on_success()
+
+        assert scraper._current_rate <= scraper.rate_limit
+
+    def test_block_resets_consecutive_counter(self) -> None:
+        scraper = self._make_scraper()
+        for _ in range(5):
+            scraper._on_success()
+        assert scraper._consecutive_ok == 5
+
+        scraper._on_block("blocked")
+        assert scraper._consecutive_ok == 0
+
+
+# ---------------------------------------------------------------------------
+# HttpScraper with mocked fetcher
+# ---------------------------------------------------------------------------
+
+
+class TestHttpScraper:
+    """Tests for HttpScraper.fetch_page and fetch_json."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_page_success(self) -> None:
+        from app.scrapers.base import HttpScraper
+
+        class TestScraper(HttpScraper):
+            marketplace_name = "test"
+            base_url = "https://test.com"
+            rate_limit = 100.0
+            max_retries = 1
+
+            async def search(self, query, *, page=1):
+                return []
+
+            async def get_product(self, product_id):
+                return None
+
+        mock_response = MockSelector(status=200, body="<html>OK</html>" + "x" * 1000)
+
+        with (
+            patch("app.scrapers.base._get_proxy_rotator"),
+            patch("app.scrapers.base.AsyncFetcher") as mock_fetcher,
+        ):
+            mock_fetcher.get = AsyncMock(return_value=mock_response)
+            scraper = TestScraper()
+            result = await scraper.fetch_page("https://test.com/page")
+
+        assert result.status == 200
+
+    @pytest.mark.asyncio
+    async def test_fetch_page_retries_on_block(self) -> None:
+        from app.scrapers.base import HttpScraper
+
+        class TestScraper(HttpScraper):
+            marketplace_name = "test"
+            base_url = "https://test.com"
+            rate_limit = 100.0
+            max_retries = 2
+
+            async def search(self, query, *, page=1):
+                return []
+
+            async def get_product(self, product_id):
+                return None
+
+        blocked = MockSelector(status=403, body=BLOCKED_RESPONSE_403)
+        success = MockSelector(status=200, body="<html>OK</html>" + "x" * 1000)
+
+        with (
+            patch("app.scrapers.base._get_proxy_rotator"),
+            patch("app.scrapers.base.AsyncFetcher") as mock_fetcher,
+            patch("app.scrapers.antidetect.HumanBehavior.random_delay", new_callable=AsyncMock),
+        ):
+            # First call blocked, second succeeds
+            mock_fetcher.get = AsyncMock(side_effect=[blocked, success])
+            scraper = TestScraper()
+            result = await scraper.fetch_page("https://test.com/page")
+
+        assert result.status == 200
+        assert mock_fetcher.get.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_fetch_page_raises_after_all_retries(self) -> None:
+        from app.scrapers.base import HttpScraper, ScraperError
+
+        class TestScraper(HttpScraper):
+            marketplace_name = "test"
+            base_url = "https://test.com"
+            rate_limit = 100.0
+            max_retries = 2
+
+            async def search(self, query, *, page=1):
+                return []
+
+            async def get_product(self, product_id):
+                return None
+
+        blocked = MockSelector(status=403, body=BLOCKED_RESPONSE_403)
+
+        with (
+            patch("app.scrapers.base._get_proxy_rotator"),
+            patch("app.scrapers.base.AsyncFetcher") as mock_fetcher,
+            patch("app.scrapers.antidetect.HumanBehavior.random_delay", new_callable=AsyncMock),
+        ):
+            mock_fetcher.get = AsyncMock(return_value=blocked)
+            scraper = TestScraper()
+
+            with pytest.raises(ScraperError):
+                await scraper.fetch_page("https://test.com/page")
+
+    @pytest.mark.asyncio
+    async def test_fetch_json_success(self) -> None:
+        import json
+
+        from app.scrapers.base import HttpScraper
+
+        class TestScraper(HttpScraper):
+            marketplace_name = "test"
+            base_url = "https://test.com"
+            rate_limit = 100.0
+            max_retries = 1
+
+            async def search(self, query, *, page=1):
+                return []
+
+            async def get_product(self, product_id):
+                return None
+
+        mock_response = MockSelector(
+            status=200,
+            body=json.dumps(WB_SEARCH_JSON),
+        )
+
+        with (
+            patch("app.scrapers.base._get_proxy_rotator"),
+            patch("app.scrapers.base.AsyncFetcher") as mock_fetcher,
+        ):
+            mock_fetcher.get = AsyncMock(return_value=mock_response)
+            scraper = TestScraper()
+            result = await scraper.fetch_json(
+                "https://api.test.com/search",
+                params={"query": "iphone"},
+            )
+
+        assert "data" in result
+        assert len(result["data"]["products"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# DynamicScraper with mocked StealthyFetcher
+# ---------------------------------------------------------------------------
+
+
+class TestDynamicScraper:
+    """Tests for DynamicScraper.fetch_page."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_page_passes_page_action(self) -> None:
+        """Verify that page_action (scroll simulation) is passed to fetcher."""
+        from app.scrapers.base import DynamicScraper
+
+        class TestScraper(DynamicScraper):
+            marketplace_name = "test"
+            base_url = "https://test.com"
+            rate_limit = 100.0
+            max_retries = 1
+
+            async def search(self, query, *, page=1):
+                return []
+
+            async def get_product(self, product_id):
+                return None
+
+        mock_response = MockSelector(status=200, body="<html>OK</html>" + "x" * 1000)
+
+        with (
+            patch("app.scrapers.base._get_proxy_rotator"),
+            patch("app.scrapers.base.StealthyFetcher") as mock_fetcher,
+        ):
+            mock_fetcher.async_fetch = AsyncMock(return_value=mock_response)
+            mock_fetcher.adaptive = True
+            scraper = TestScraper()
+            await scraper.fetch_page("https://test.com/page")
+
+        # Verify page_action was included in the call
+        call_kwargs = mock_fetcher.async_fetch.call_args
+        assert "page_action" in call_kwargs.kwargs or (len(call_kwargs.args) > 1)
+
+    @pytest.mark.asyncio
+    async def test_fetch_page_detects_captcha(self) -> None:
+        from app.scrapers.base import DynamicScraper, ScraperError
+
+        class TestScraper(DynamicScraper):
+            marketplace_name = "test"
+            base_url = "https://test.com"
+            rate_limit = 100.0
+            max_retries = 1
+
+            async def search(self, query, *, page=1):
+                return []
+
+            async def get_product(self, product_id):
+                return None
+
+        captcha_page = MockSelector(status=200, body=CAPTCHA_RESPONSE)
+
+        with (
+            patch("app.scrapers.base._get_proxy_rotator"),
+            patch("app.scrapers.base.StealthyFetcher") as mock_fetcher,
+            patch("app.scrapers.antidetect.HumanBehavior.random_delay", new_callable=AsyncMock),
+        ):
+            mock_fetcher.async_fetch = AsyncMock(return_value=captcha_page)
+            mock_fetcher.adaptive = True
+            scraper = TestScraper()
+
+            with pytest.raises(ScraperError):
+                await scraper.fetch_page("https://test.com/page")
+
+    @pytest.mark.asyncio
+    async def test_fetch_page_uses_proxy(self) -> None:
+        """Verify proxy is passed to StealthyFetcher."""
+        from app.scrapers.base import DynamicScraper
+
+        class TestScraper(DynamicScraper):
+            marketplace_name = "test"
+            base_url = "https://test.com"
+            rate_limit = 100.0
+            max_retries = 1
+
+            async def search(self, query, *, page=1):
+                return []
+
+            async def get_product(self, product_id):
+                return None
+
+        mock_response = MockSelector(status=200, body="<html>OK</html>" + "x" * 1000)
+
+        mock_rotator = MagicMock()
+        mock_proxy = MagicMock()
+        mock_proxy.url = "http://proxy:8080"
+        mock_rotator.get_next = AsyncMock(return_value=mock_proxy)
+        mock_rotator._proxies = [mock_proxy]
+
+        with (
+            patch("app.scrapers.base._get_proxy_rotator", return_value=mock_rotator),
+            patch("app.scrapers.base.StealthyFetcher") as mock_fetcher,
+        ):
+            mock_fetcher.async_fetch = AsyncMock(return_value=mock_response)
+            mock_fetcher.adaptive = True
+            scraper = TestScraper()
+            await scraper.fetch_page("https://test.com/page")
+
+        # Check that proxy was passed
+        call_kwargs = mock_fetcher.async_fetch.call_args.kwargs
+        assert call_kwargs.get("proxy") == "http://proxy:8080"

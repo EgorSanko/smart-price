@@ -1,417 +1,731 @@
-"""Base scraper classes for marketplace parsing.
+"""Base scraper framework built on Scrapling + anti-detection layer.
 
-This module provides abstract base classes for building marketplace scrapers
-with built-in rate limiting, retry logic, and browser automation support.
+Why existing tools alone don't work against Ozon/WB:
+- StealthyFetcher solves TLS/fingerprint detection, but marketplaces
+  also detect by **behavior**: fixed timing, no scrolling, no session history.
+- Residential proxies solve IP reputation, but without behavior simulation
+  the proxy just gets burned faster.
+
+This module combines Scrapling's stealth capabilities with:
+1. ProxyRotator — health-tracked residential proxy pool
+2. HumanBehavior — variable delays, scroll simulation, page_action callbacks
+3. SessionManager — maintains browsing context (cookies, history, warmup)
+4. Response analysis — detects captchas, blocks, empty pages
+5. Adaptive rate limiting — backs off on detection, recovers on success
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import random
 import time
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING, Any
+from urllib.parse import urlencode
 
-import httpx
-from playwright.async_api import Browser, Page, async_playwright
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
+from scrapling.fetchers import (
+    AsyncFetcher,
+    AsyncStealthySession,
+    Fetcher,
+    StealthyFetcher,
 )
 
+from app.scrapers.antidetect import (
+    HumanBehavior,
+    ProxyRotator,
+    ScrapingSession,
+    SessionManager,
+    build_antidetect_config,
+)
+
+
 if TYPE_CHECKING:
+    from scrapling.parser import Selector
+
     from app.schemas.product import ProductCreate
 
 logger = logging.getLogger(__name__)
 
 
-class ScraperError(Exception):
-    """Base exception for scraper errors."""
-
-    pass
-
-
-class RateLimitError(ScraperError):
-    """Raised when rate limit is exceeded."""
-
-    pass
+# ---------------------------------------------------------------------------
+# Adaptive parsing — survive DOM changes between runs
+# ---------------------------------------------------------------------------
+Fetcher.adaptive = True
+StealthyFetcher.adaptive = True
 
 
-class BlockedError(ScraperError):
-    """Raised when scraper is blocked by the website."""
+# ---------------------------------------------------------------------------
+# Shared proxy pool (singleton, loaded once from settings)
+# ---------------------------------------------------------------------------
+_proxy_rotator: ProxyRotator | None = None
 
-    pass
+
+def _get_proxy_rotator() -> ProxyRotator:
+    """Lazy-init shared proxy rotator from settings."""
+    global _proxy_rotator
+    if _proxy_rotator is None:
+        _proxy_rotator = ProxyRotator.from_settings()
+    return _proxy_rotator
+
+
+# ---------------------------------------------------------------------------
+# Response analysis (ban/block detection)
+# ---------------------------------------------------------------------------
+
+_CAPTCHA_MARKERS = [
+    "captcha",
+    "recaptcha",
+    "hcaptcha",
+    "turnstile",
+    "verify you are human",
+    "challenge-platform",
+    "подтвердите, что вы не робот",
+    "проверка безопасности",
+]
+
+_BLOCK_MARKERS = [
+    "access denied",
+    "доступ ограничен",
+    "подозрительная активность",
+    "automated",
+    "bot detection",
+    "too many requests",
+]
+
+_CF_MARKERS = [
+    "cf-browser-verification",
+    "checking your browser",
+    "just a moment",
+    "ray id",
+]
+
+
+def _is_blocked(status: int, body: str) -> str | None:
+    """Check if response indicates a block.
+
+    Args:
+        status: HTTP response status code.
+        body: Response body text.
+
+    Returns:
+        Block reason string, or None if not blocked.
+    """
+    if status == 403:
+        return "http_403"
+    if status == 429:
+        return "rate_limited"
+    if status in (503, 520, 521, 522, 523):
+        return f"http_{status}"
+
+    body_lower = body[:3000].lower()
+
+    for marker in _CAPTCHA_MARKERS:
+        if marker in body_lower:
+            return "captcha"
+
+    for marker in _CF_MARKERS:
+        if marker in body_lower:
+            return "cloudflare"
+
+    for marker in _BLOCK_MARKERS:
+        if marker in body_lower:
+            return "blocked"
+
+    # Suspiciously short response for a real product page
+    if status == 200 and len(body) < 500:
+        return "empty_response"
+
+    return None
+
+
+# ---------------------------------------------------------------------------
+# BaseScraper
+# ---------------------------------------------------------------------------
 
 
 class BaseScraper(ABC):
-    """Abstract base class for all marketplace scrapers.
+    """Abstract base for all marketplace scrapers.
 
-    Provides common functionality including:
-    - HTTP client with custom headers
-    - Rate limiting
-    - Retry logic with exponential backoff
-    - Graceful resource cleanup
+    Provides:
+    - Adaptive rate limiting (slows down on blocks, recovers on success)
+    - Proxy integration via shared ProxyRotator
+    - Session management for consistent browsing identity
+    - Human-like delay patterns
 
     Attributes:
-        marketplace_name: Unique identifier for the marketplace.
-        base_url: Base URL of the marketplace.
-        rate_limit: Maximum requests per second.
+        marketplace_name: Unique identifier (e.g. "ozon", "wildberries").
+        base_url: Root URL of the marketplace.
+        rate_limit: Maximum requests per second (baseline).
+        max_retries: Number of retry attempts on failure.
     """
 
     marketplace_name: str
     base_url: str
     rate_limit: float = 1.0
+    max_retries: int = 3
 
-    def __init__(self, proxy_url: str | None = None) -> None:
-        """Initialize the scraper.
+    def __init__(self) -> None:
+        self._session_mgr = SessionManager(_get_proxy_rotator())
+        self._behavior = HumanBehavior()
 
-        Args:
-            proxy_url: Optional proxy URL for requests.
+        # Adaptive rate: starts at configured rate, decreases on blocks
+        self._current_rate = self.rate_limit
+        self._min_rate = 0.1  # Floor: 1 request per 10 seconds
+        self._consecutive_ok = 0
+        self._last_request_at = 0.0
+
+    # ------------------------------------------------------------------
+    # Rate limiting (adaptive)
+    # ------------------------------------------------------------------
+
+    async def _enforce_rate_limit(self) -> None:
+        """Wait with adaptive rate + human-like jitter.
+
+        Rate slows down when blocks are detected,
+        recovers gradually after 10 consecutive successes.
         """
-        self._proxy_url = proxy_url
-        self._last_request_time: float = 0.0
-        self._client: httpx.AsyncClient | None = None
-
-    def _get_headers(self) -> dict[str, str]:
-        """Get default HTTP headers for requests.
-
-        Returns:
-            Dictionary of HTTP headers.
-        """
-        return {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
-            "Accept": (
-                "text/html,application/xhtml+xml,application/xml;"
-                "q=0.9,image/avif,image/webp,*/*;q=0.8"
-            ),
-            "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "none",
-            "Sec-Fetch-User": "?1",
-            "Cache-Control": "max-age=0",
-        }
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create HTTP client.
-
-        Returns:
-            Configured async HTTP client.
-        """
-        if self._client is None:
-            transport = None
-            if self._proxy_url:
-                transport = httpx.AsyncHTTPTransport(proxy=self._proxy_url)
-
-            self._client = httpx.AsyncClient(
-                timeout=httpx.Timeout(30.0, connect=10.0),
-                headers=self._get_headers(),
-                follow_redirects=True,
-                transport=transport,
-            )
-        return self._client
-
-    async def _rate_limit_wait(self) -> None:
-        """Wait to respect rate limiting."""
-        if self.rate_limit <= 0:
-            return
-
-        elapsed = time.monotonic() - self._last_request_time
-        min_interval = 1.0 / self.rate_limit
+        min_interval = 1.0 / self._current_rate
+        elapsed = time.monotonic() - self._last_request_at
 
         if elapsed < min_interval:
-            await asyncio.sleep(min_interval - elapsed)
+            base_wait = min_interval - elapsed
+            # Human jitter: ±30% of interval
+            jitter = base_wait * 0.3 * (2 * random.random() - 1)
+            await asyncio.sleep(max(0.1, base_wait + jitter))
 
-        self._last_request_time = time.monotonic()
+        self._last_request_at = time.monotonic()
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.HTTPError, asyncio.TimeoutError)),
-        reraise=True,
-    )
-    async def fetch(self, url: str) -> str:
-        """Fetch HTML content from URL with retry logic.
+    def _on_success(self) -> None:
+        """Track success — gradually recover rate after blocks."""
+        self._consecutive_ok += 1
+        if self._consecutive_ok >= 10 and self._current_rate < self.rate_limit:
+            self._current_rate = min(self._current_rate * 1.2, self.rate_limit)
+            self._consecutive_ok = 0
+            logger.info(
+                "rate_recovered",
+                extra={
+                    "marketplace": self.marketplace_name,
+                    "new_rate": round(self._current_rate, 2),
+                },
+            )
+
+    def _on_block(self, reason: str) -> None:
+        """Track block — halve rate immediately."""
+        self._consecutive_ok = 0
+        old_rate = self._current_rate
+        self._current_rate = max(self._current_rate * 0.5, self._min_rate)
+        logger.warning(
+            "rate_backed_off",
+            extra={
+                "marketplace": self.marketplace_name,
+                "reason": reason,
+                "old_rate": round(old_rate, 2),
+                "new_rate": round(self._current_rate, 2),
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # Session & proxy helpers
+    # ------------------------------------------------------------------
+
+    async def _get_session(self) -> ScrapingSession:
+        """Get or create session for this marketplace."""
+        return await self._session_mgr.get_or_create_session(self.marketplace_name)
+
+    async def _get_proxy(self) -> str | None:
+        """Get proxy URL from rotator."""
+        session = await self._get_session()
+        return await self._session_mgr.get_proxy_for_session(session)
+
+    # ------------------------------------------------------------------
+    # Abstract interface
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    async def search(self, query: str, *, page: int = 1) -> list[ProductCreate]:
+        """Search for products by text query.
 
         Args:
-            url: URL to fetch.
+            query: Search string.
+            page: Results page number (1-indexed).
 
         Returns:
-            HTML content as string.
+            List of parsed products.
+        """
+
+    @abstractmethod
+    async def get_product(self, product_id: str) -> ProductCreate:
+        """Fetch full details for a single product.
+
+        Args:
+            product_id: Marketplace-specific product identifier.
+
+        Returns:
+            Parsed product data.
 
         Raises:
-            httpx.HTTPStatusError: If response status is 4xx/5xx.
-            RateLimitError: If rate limited (429).
-            BlockedError: If access is blocked (403).
+            ScraperError: If product cannot be fetched or parsed.
         """
-        await self._rate_limit_wait()
 
-        client = await self._get_client()
-
-        logger.debug("Fetching URL: %s", url)
-        response = await client.get(url)
-
-        if response.status_code == 429:
-            raise RateLimitError(f"Rate limited on {url}")
-
-        if response.status_code == 403:
-            raise BlockedError(f"Blocked on {url}")
-
-        response.raise_for_status()
-        return response.text
-
-    async def fetch_json(self, url: str, params: dict | None = None) -> dict:
-        """Fetch JSON data from URL.
-
-        Args:
-            url: URL to fetch.
-            params: Optional query parameters.
-
-        Returns:
-            Parsed JSON as dictionary.
-        """
-        await self._rate_limit_wait()
-
-        client = await self._get_client()
-
-        logger.debug("Fetching JSON: %s", url)
-        response = await client.get(url, params=params)
-        response.raise_for_status()
-
-        return response.json()
-
-    @abstractmethod
-    async def search(
-        self,
-        query: str,
-        page: int = 1,
-        **kwargs,
-    ) -> list[ProductCreate]:
-        """Search for products.
-
-        Args:
-            query: Search query string.
-            page: Page number (1-indexed).
-            **kwargs: Additional search parameters.
-
-        Returns:
-            List of found products.
-        """
-        pass
-
-    @abstractmethod
-    async def get_product(self, product_id: str) -> ProductCreate | None:
-        """Get single product by ID.
-
-        Args:
-            product_id: Marketplace-specific product ID.
-
-        Returns:
-            Product data or None if not found.
-        """
-        pass
-
-    @abstractmethod
     async def get_category(
         self,
         category_url: str,
-        max_pages: int = 10,
+        *,
+        max_pages: int = 50,
     ) -> AsyncGenerator[ProductCreate, None]:
         """Iterate over all products in a category.
 
         Args:
-            category_url: URL of the category page.
-            max_pages: Maximum number of pages to scrape.
+            category_url: Full URL of the category page.
+            max_pages: Safety limit to prevent infinite pagination.
 
         Yields:
-            Product data for each product in the category.
+            Parsed products one by one.
         """
-        pass
+        page = 1
+        while page <= max_pages:
+            products = await self._fetch_category_page(category_url, page)
+            if not products:
+                break
+            for product in products:
+                yield product
+            page += 1
+
+    async def _fetch_category_page(self, category_url: str, page: int) -> list[ProductCreate]:
+        """Fetch a single page of category results. Override if needed."""
+        return []
 
     async def close(self) -> None:
-        """Close HTTP client and release resources."""
-        if self._client:
-            await self._client.aclose()
-            self._client = None
-
-    async def __aenter__(self) -> "BaseScraper":
-        """Async context manager entry."""
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Async context manager exit."""
-        await self.close()
+        """Release resources. Override in subclasses if needed."""
 
 
-class PlaywrightScraper(BaseScraper):
-    """Base scraper using Playwright for JavaScript-heavy websites.
+# ---------------------------------------------------------------------------
+# HttpScraper (Fetcher — fast HTTP, no browser)
+# ---------------------------------------------------------------------------
 
-    Extends BaseScraper with browser automation capabilities for sites
-    that require JavaScript execution to render content.
+
+class HttpScraper(BaseScraper):
+    """Scraper using Scrapling's AsyncFetcher (HTTP-only, no browser).
+
+    Best for:
+    - Sites with public JSON APIs (e.g. Wildberries)
+    - Server-rendered HTML pages
+    - Maximum speed (no browser overhead)
+
+    Anti-detection:
+    - TLS fingerprint impersonation via curl_cffi
+    - Proxy rotation via ProxyRotator
+    - Adaptive rate limiting with backoff on 429/403
+    - Human-like jitter between requests
     """
 
-    def __init__(
-        self,
-        proxy_url: str | None = None,
-        headless: bool = True,
-    ) -> None:
-        """Initialize Playwright scraper.
+    async def fetch_page(self, url: str) -> Selector:
+        """Fetch HTML page via HTTP with anti-detection.
 
         Args:
-            proxy_url: Optional proxy URL.
-            headless: Run browser in headless mode.
-        """
-        super().__init__(proxy_url)
-        self._headless = headless
-        self._playwright = None
-        self._browser: Browser | None = None
-
-    async def _get_browser(self) -> Browser:
-        """Get or create browser instance.
+            url: Target URL.
 
         Returns:
-            Playwright browser instance.
+            Scrapling Selector (parsed page).
+
+        Raises:
+            ScraperError: After all retries exhausted.
         """
-        if self._browser is None:
-            self._playwright = await async_playwright().start()
+        last_error: Exception | None = None
 
-            launch_args = [
-                "--disable-blink-features=AutomationControlled",
-                "--disable-dev-shm-usage",
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-gpu",
-            ]
+        for attempt in range(1, self.max_retries + 1):
+            await self._enforce_rate_limit()
 
-            proxy_config = None
-            if self._proxy_url:
-                proxy_config = {"server": self._proxy_url}
+            try:
+                proxy = await self._get_proxy()
 
-            self._browser = await self._playwright.chromium.launch(
-                headless=self._headless,
-                args=launch_args,
-                proxy=proxy_config,
-            )
+                kwargs: dict[str, Any] = {
+                    "stealthy_headers": True,
+                    "follow_redirects": True,
+                    "timeout": 30,
+                }
+                if proxy:
+                    kwargs["proxy"] = proxy
 
-        return self._browser
+                page = await AsyncFetcher.get(url, **kwargs)
+                body = str(page.body) if hasattr(page, "body") else ""
 
-    async def _create_page(self) -> Page:
-        """Create new browser page with stealth settings.
+                block_reason = _is_blocked(page.status, body)
+                if block_reason:
+                    self._on_block(block_reason)
+                    logger.warning(
+                        "http_blocked",
+                        extra={
+                            "url": url,
+                            "reason": block_reason,
+                            "status": page.status,
+                            "attempt": attempt,
+                        },
+                    )
+                    if attempt < self.max_retries:
+                        await HumanBehavior.random_delay(5.0, 15.0)
+                        continue
 
-        Returns:
-            Configured browser page.
-        """
-        browser = await self._get_browser()
+                if page.status != 200:
+                    if attempt < self.max_retries:
+                        await HumanBehavior.random_delay(3.0, 8.0)
+                        continue
 
-        context = await browser.new_context(
-            viewport={"width": 1920, "height": 1080},
-            user_agent=self._get_headers()["User-Agent"],
-            locale="ru-RU",
-            timezone_id="Europe/Moscow",
-            permissions=["geolocation"],
-            geolocation={"latitude": 55.7558, "longitude": 37.6173},
-        )
+                self._on_success()
+                return page
 
-        # Block unnecessary resources to speed up loading
-        page = await context.new_page()
-        await page.route(
-            "**/*.{png,jpg,jpeg,gif,svg,ico,woff,woff2,ttf,eot}",
-            lambda route: route.abort(),
-        )
-
-        # Inject stealth scripts
-        await page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
-            Object.defineProperty(navigator, 'plugins', {
-                get: () => [1, 2, 3, 4, 5]
-            });
-        """)
-
-        return page
-
-    async def fetch_js(
-        self,
-        url: str,
-        wait_selector: str | None = None,
-        wait_timeout: int = 10000,
-    ) -> str:
-        """Fetch page content after JavaScript execution.
-
-        Args:
-            url: URL to fetch.
-            wait_selector: CSS selector to wait for before returning.
-            wait_timeout: Maximum time to wait for selector (ms).
-
-        Returns:
-            Rendered HTML content.
-        """
-        await self._rate_limit_wait()
-
-        page = await self._create_page()
-        try:
-            logger.debug("Fetching with JS: %s", url)
-            await page.goto(url, wait_until="networkidle")
-
-            if wait_selector:
-                await page.wait_for_selector(
-                    wait_selector,
-                    timeout=wait_timeout,
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "http_fetch_error",
+                    extra={"url": url, "error": str(exc), "attempt": attempt},
                 )
+                if attempt < self.max_retries:
+                    await HumanBehavior.random_delay(3.0, 10.0)
 
-            return await page.content()
-        finally:
-            await page.close()
+        raise ScraperError(f"Failed to fetch {url} after {self.max_retries} attempts: {last_error}")
 
-    async def scroll_and_load(
-        self,
-        url: str,
-        scroll_count: int = 5,
-        scroll_delay: float = 1.0,
-    ) -> str:
-        """Fetch page with infinite scroll handling.
+    async def fetch_json(self, url: str, *, params: dict | None = None) -> dict:
+        """Fetch JSON from API endpoint with anti-detection.
 
         Args:
-            url: URL to fetch.
-            scroll_count: Number of scroll iterations.
-            scroll_delay: Delay between scrolls (seconds).
+            url: API endpoint URL.
+            params: Query parameters.
 
         Returns:
-            Rendered HTML content after scrolling.
+            Parsed JSON dict.
         """
-        await self._rate_limit_wait()
+        last_error: Exception | None = None
 
-        page = await self._create_page()
-        try:
-            await page.goto(url, wait_until="networkidle")
+        for attempt in range(1, self.max_retries + 1):
+            await self._enforce_rate_limit()
 
-            for _ in range(scroll_count):
-                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await asyncio.sleep(scroll_delay)
-                await page.wait_for_load_state("networkidle")
+            try:
+                full_url = f"{url}?{urlencode(params)}" if params else url
+                proxy = await self._get_proxy()
 
-            return await page.content()
-        finally:
-            await page.close()
+                kwargs: dict[str, Any] = {
+                    "stealthy_headers": True,
+                    "follow_redirects": True,
+                    "timeout": 30,
+                }
+                if proxy:
+                    kwargs["proxy"] = proxy
 
-    async def close(self) -> None:
-        """Close browser and HTTP client."""
-        await super().close()
+                response = await AsyncFetcher.get(full_url, **kwargs)
+                body_str = str(response.body) if hasattr(response, "body") else ""
 
-        if self._browser:
-            await self._browser.close()
-            self._browser = None
+                block_reason = _is_blocked(response.status, body_str)
+                if block_reason:
+                    self._on_block(block_reason)
+                    if attempt < self.max_retries:
+                        await HumanBehavior.random_delay(5.0, 15.0)
+                        continue
 
-        if self._playwright:
-            await self._playwright.stop()
-            self._playwright = None
+                if response.status != 200:
+                    if attempt < self.max_retries:
+                        await HumanBehavior.random_delay(3.0, 8.0)
+                        continue
+
+                self._on_success()
+                return json.loads(response.body)
+
+            except (json.JSONDecodeError, ScraperError):
+                raise
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "json_fetch_error",
+                    extra={"url": url, "error": str(exc), "attempt": attempt},
+                )
+                if attempt < self.max_retries:
+                    await HumanBehavior.random_delay(3.0, 10.0)
+
+        raise ScraperError(
+            f"JSON fetch failed: {url} after {self.max_retries} attempts: {last_error}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# DynamicScraper (StealthyFetcher — full browser with stealth)
+# ---------------------------------------------------------------------------
+
+
+class DynamicScraper(BaseScraper):
+    """Scraper using Scrapling's StealthyFetcher (full browser).
+
+    Best for:
+    - JS-heavy sites (Ozon, Яндекс.Маркет)
+    - Sites with Cloudflare / anti-bot JS challenges
+    - Pages requiring interaction to load content
+
+    Anti-detection stack (why each layer matters):
+
+    Layer 1 — TLS fingerprint:
+        StealthyFetcher uses a modified browser that produces a real
+        Chrome JA3/JA4 hash, not a detectable library fingerprint.
+
+    Layer 2 — Browser fingerprint:
+        Canvas noise, WebGL spoofing, WebRTC blocking, consistent
+        timezone/locale matching proxy geo.
+
+    Layer 3 — Behavioral:
+        page_action callback scrolls the page, adds random pauses.
+        Without this, Ozon flags us even with perfect fingerprints.
+
+    Layer 4 — IP reputation:
+        Residential/mobile proxies via ProxyRotator. Datacenter IPs
+        are instantly blocked by both Ozon and WB.
+
+    Layer 5 — Session consistency:
+        Same proxy + cookies for a sequence of requests. New identity
+        per request is suspicious — real users browse multiple pages.
+    """
+
+    async def fetch_page(
+        self,
+        url: str,
+        *,
+        wait_selector: str | None = None,
+        network_idle: bool = True,
+        disable_resources: bool = True,
+        scroll: bool = True,
+    ) -> Selector:
+        """Fetch page with browser rendering + human behavior simulation.
+
+        The critical addition vs naive StealthyFetcher.fetch():
+        We pass page_action that scrolls and pauses, simulating a real user.
+        Without this, behavior-based detection flags us immediately.
+
+        Args:
+            url: Target URL.
+            wait_selector: CSS selector to wait for before capturing HTML.
+            network_idle: Wait until network activity settles.
+            disable_resources: Block images/fonts for speed.
+            scroll: Simulate scrolling (highly recommended for Ozon).
+
+        Returns:
+            Scrapling Selector with adaptive element tracking.
+
+        Raises:
+            ScraperError: After all retries exhausted.
+        """
+        last_error: Exception | None = None
+
+        for attempt in range(1, self.max_retries + 1):
+            await self._enforce_rate_limit()
+
+            try:
+                proxy = await self._get_proxy()
+
+                # Build config with scroll simulation + random headers
+                antidetect = build_antidetect_config(
+                    proxy_url=proxy,
+                    scroll=scroll,
+                    scroll_depth=0.5 + random.random() * 0.4,  # 50-90%
+                    add_random_delay=True,
+                )
+                fetch_kwargs = antidetect.to_stealthy_kwargs()
+
+                if wait_selector:
+                    fetch_kwargs["wait_selector"] = wait_selector
+                fetch_kwargs["network_idle"] = network_idle
+                fetch_kwargs["disable_resources"] = disable_resources
+
+                start = time.monotonic()
+                page = await StealthyFetcher.async_fetch(url, **fetch_kwargs)
+                elapsed_ms = (time.monotonic() - start) * 1000
+
+                body = str(page.body) if hasattr(page, "body") else ""
+                block_reason = _is_blocked(page.status, body)
+
+                if block_reason:
+                    self._on_block(block_reason)
+                    self._report_proxy_failure(proxy)
+                    logger.warning(
+                        "dynamic_blocked",
+                        extra={
+                            "url": url,
+                            "reason": block_reason,
+                            "status": page.status,
+                            "attempt": attempt,
+                        },
+                    )
+                    if attempt < self.max_retries:
+                        await HumanBehavior.random_delay(10.0, 30.0)
+                        continue
+
+                if page.status != 200:
+                    if attempt < self.max_retries:
+                        await HumanBehavior.random_delay(5.0, 15.0)
+                        continue
+
+                self._on_success()
+                self._report_proxy_success(proxy, elapsed_ms)
+
+                session = await self._get_session()
+                session.record_visit(url)
+
+                logger.info(
+                    "dynamic_fetch_ok",
+                    extra={
+                        "url": url,
+                        "marketplace": self.marketplace_name,
+                        "attempt": attempt,
+                        "elapsed_ms": round(elapsed_ms),
+                    },
+                )
+                return page
+
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "dynamic_fetch_error",
+                    extra={"url": url, "error": str(exc), "attempt": attempt},
+                )
+                if attempt < self.max_retries:
+                    await HumanBehavior.random_delay(5.0, 20.0)
+
+        raise ScraperError(f"Failed to fetch {url} after {self.max_retries} attempts: {last_error}")
+
+    async def fetch_with_session(
+        self,
+        urls: list[str],
+        *,
+        wait_selector: str | None = None,
+        network_idle: bool = True,
+        warmup: bool = True,
+    ) -> list[Selector]:
+        """Fetch multiple pages in a single browser session.
+
+        Key anti-detection benefits of session reuse:
+        - Same cookies/localStorage across requests (consistent identity)
+        - Realistic navigation history (referers chain naturally)
+        - One proxy for entire session (no suspicious IP switching)
+        - Warmup: visit homepage first to establish legitimate session
+
+        Args:
+            urls: List of URLs to fetch.
+            wait_selector: CSS selector to wait for on each page.
+            network_idle: Wait until network is idle.
+            warmup: Visit marketplace homepage first.
+
+        Returns:
+            List of Selectors in the same order as input URLs.
+        """
+        results: dict[str, Selector] = {}
+        proxy = await self._get_proxy()
+
+        session_kwargs: dict[str, Any] = {
+            "headless": True,
+            "block_webrtc": True,
+        }
+        if proxy:
+            session_kwargs["proxy"] = proxy
+
+        async with AsyncStealthySession(**session_kwargs) as session:
+            # WARMUP: visit homepage first to build cookies
+            if warmup:
+                logger.info(
+                    "session_warmup",
+                    extra={"marketplace": self.marketplace_name},
+                )
+                try:
+                    await session.fetch(
+                        self.base_url,
+                        network_idle=True,
+                        google_search=True,
+                    )
+                    await HumanBehavior.random_delay(3.0, 8.0)
+                except Exception as exc:
+                    logger.debug("warmup_failed", extra={"error": str(exc)})
+
+            for url in urls:
+                await self._enforce_rate_limit()
+
+                fetch_kwargs: dict[str, Any] = {
+                    "network_idle": network_idle,
+                    "disable_resources": True,
+                }
+                if wait_selector:
+                    fetch_kwargs["wait_selector"] = wait_selector
+
+                try:
+                    page = await session.fetch(url, **fetch_kwargs)
+
+                    body = str(page.body) if hasattr(page, "body") else ""
+                    block_reason = _is_blocked(page.status, body)
+
+                    if block_reason:
+                        self._on_block(block_reason)
+                        await HumanBehavior.random_delay(10.0, 25.0)
+                    else:
+                        self._on_success()
+
+                    results[url] = page
+
+                    # Simulate reading the page
+                    await HumanBehavior.random_delay(2.0, 6.0)
+
+                except Exception as exc:
+                    logger.error(
+                        "session_fetch_error",
+                        extra={"url": url, "error": str(exc)},
+                    )
+                    raise ScraperError(f"Session fetch failed for {url}: {exc}") from exc
+
+        return [results[url] for url in urls if url in results]
+
+    # ------------------------------------------------------------------
+    # Proxy reporting helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _report_proxy_success(proxy_url: str | None, elapsed_ms: float) -> None:
+        """Report successful request to proxy rotator."""
+        if not proxy_url:
+            return
+        rotator = _get_proxy_rotator()
+        for entry in rotator._proxies:
+            if entry.url == proxy_url:
+                rotator.report_success(entry, elapsed_ms)
+                return
+
+    @staticmethod
+    def _report_proxy_failure(proxy_url: str | None) -> None:
+        """Report failed request to proxy rotator."""
+        if not proxy_url:
+            return
+        rotator = _get_proxy_rotator()
+        for entry in rotator._proxies:
+            if entry.url == proxy_url:
+                rotator.report_failure(entry)
+                return
+
+
+# ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+
+class ScraperError(Exception):
+    """Base exception for scraper failures."""
+
+
+class ProductNotFoundError(ScraperError):
+    """Raised when a product cannot be found on the marketplace."""
+
+
+class RateLimitError(ScraperError):
+    """Raised when the marketplace rate-limits our requests."""
+
+
+class ParsingError(ScraperError):
+    """Raised when page content cannot be parsed into product data."""
+
+
+class BlockedError(ScraperError):
+    """Raised when the marketplace has blocked us (captcha, 403, etc.)."""

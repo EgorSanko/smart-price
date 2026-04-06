@@ -5,6 +5,7 @@ This module creates and configures the FastAPI application instance.
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import UTC
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,15 +32,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Yields:
         None during application lifetime.
     """
-    # Startup
-    if settings.DEBUG:
-        # Create tables in development (use migrations in production)
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+    # Startup: always create tables (safe — does nothing if they exist)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    # Seed test account for YooKassa reviewers
+    await _seed_test_account()
 
     yield
 
     # Shutdown
+    from app.scrapers.playwright_scrapers import close_browser
+
+    await close_browser()
     await engine.dispose()
 
 
@@ -112,6 +117,35 @@ def _get_status_code(exc: AppException) -> int:
         "EXTERNAL_SERVICE_ERROR": status.HTTP_502_BAD_GATEWAY,
     }
     return mapping.get(exc.code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+async def _seed_test_account():
+    """Create permanent test account for YooKassa review."""
+    from datetime import datetime
+
+    from sqlalchemy import select
+
+    from app.core.security import hash_password
+    from app.db.models.user import User
+    from app.db.session import async_session_maker
+
+    async with async_session_maker() as session:
+        result = await session.execute(select(User).where(User.email == "test@smartprice.ru"))
+        if result.scalar_one_or_none():
+            return  # already exists
+
+        user = User(
+            email="test@smartprice.ru",
+            hashed_password=hash_password("TestPass123"),
+            full_name="Тестовый Пользователь",
+            is_active=True,
+            is_verified=True,
+            is_test_account=True,
+            subscription_plan="pro",
+            subscription_expires_at=datetime(2030, 1, 1, tzinfo=UTC),
+        )
+        session.add(user)
+        await session.commit()
 
 
 # Create application instance

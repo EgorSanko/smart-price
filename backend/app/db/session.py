@@ -1,4 +1,4 @@
-﻿"""Database session configuration."""
+"""Database session configuration."""
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
@@ -6,8 +6,15 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 
 
-# Check if using SQLite (for tests)
+# Check if using SQLite (for tests / local dev)
 is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+
+if is_sqlite:
+    # Patch SQLite compiler to handle JSONB and ARRAY types
+    from sqlalchemy.dialects import sqlite
+
+    sqlite.base.SQLiteTypeCompiler.visit_JSONB = lambda self, type_, **kw: "JSON"
+    sqlite.base.SQLiteTypeCompiler.visit_ARRAY = lambda self, type_, **kw: "TEXT"
 
 if is_sqlite:
     engine = create_async_engine(

@@ -1,0 +1,178 @@
+"""World-Devices.ru HTTP scraper — OpenCart-based electronics store in St. Petersburg.
+
+Simple HTML parsing, no anti-bot protection.
+Search URL: /index.php?route=product/search&search=QUERY
+"""
+
+import re
+
+import httpx
+import structlog
+
+
+logger = structlog.get_logger()
+
+_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Accept": "text/html,application/xhtml+xml",
+    "Accept-Language": "ru-RU,ru;q=0.9",
+}
+
+_ACCESSORY_KEYWORDS = [
+    "чехол",
+    "кейс",
+    "стекло",
+    "пленка",
+    "плёнка",
+    "кабель",
+    "зарядк",
+    "ремешок",
+    "адаптер",
+    "подставк",
+    "держатель",
+    "брелок",
+    "strap",
+    "case",
+    "cover",
+    "сумка",
+]
+
+
+def _is_accessory(title: str) -> bool:
+    t = title.lower()
+    return any(kw in t for kw in _ACCESSORY_KEYWORDS)
+
+
+def _fmt_price(price_num: float) -> str:
+    if price_num <= 0:
+        return ""
+    return f"{int(price_num):,}".replace(",", " ") + " ₽"
+
+
+class WorldDevicesHttpScraper:
+    """HTTP scraper for world-devices.ru (OpenCart store)."""
+
+    marketplace_name = "worlddevices"
+    region = "RU"
+    currency = "RUB"
+
+    async def search(self, query: str, *, max_results: int = 15) -> list[dict]:
+        results: list[dict] = []
+        try:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+                r = await client.get(
+                    "https://world-devices.ru/index.php",
+                    params={
+                        "route": "product/search",
+                        "search": query,
+                        "limit": "48",
+                    },
+                    headers=_HEADERS,
+                )
+                if r.status_code != 200:
+                    logger.warning("worlddevices_http_error", status=r.status_code)
+                    return results
+
+                html = r.text
+                results = self._parse_html(html)
+
+                # Filter accessories
+                results = [p for p in results if not _is_accessory(p["title"])]
+                results = results[:max_results]
+
+                if results:
+                    logger.info("worlddevices_ok", query=query, count=len(results))
+                else:
+                    logger.warning("worlddevices_no_results", query=query)
+
+        except Exception as e:
+            logger.error("worlddevices_failed", error=str(e), query=query)
+
+        return results
+
+    def _parse_html(self, html: str) -> list[dict]:
+        """Extract products from OpenCart product-layout blocks."""
+        results = []
+        seen_urls: set[str] = set()
+
+        # Split by product-layout divs
+        blocks = re.split(r'<div\s+class="product-layout', html)
+
+        for block in blocks[1:]:  # skip first chunk before any product
+            # Title + URL from <a class="product-thumb__name" href="...">Title</a>
+            link_m = re.search(
+                r'<a\s+class="product-thumb__name"\s+href="([^"]+)"[^>]*>(.*?)</a>',
+                block,
+                re.DOTALL,
+            )
+            if not link_m:
+                continue
+
+            url = link_m.group(1).strip()
+            title = re.sub(r"<[^>]+>", "", link_m.group(2)).strip()
+
+            if not title or url in seen_urls:
+                continue
+            seen_urls.add(url)
+
+            if not url.startswith("http"):
+                url = f"https://world-devices.ru{url}"
+
+            # Price from data-price attribute (most reliable)
+            price_num = 0.0
+            price_attr_m = re.search(r'data-price="(\d+)"', block)
+            if price_attr_m:
+                try:
+                    price_num = float(price_attr_m.group(1))
+                except ValueError:
+                    pass
+
+            # Fallback: text price
+            if not price_num:
+                price_m = re.search(r"([\d]+[\d\s]*)\s*р\.", block)
+                if price_m:
+                    price_str = price_m.group(1).replace(" ", "").replace("\xa0", "")
+                    try:
+                        price_num = float(price_str)
+                    except ValueError:
+                        pass
+
+            if price_num <= 0:
+                continue
+
+            # Image from product-thumb__image block
+            image = ""
+            img_m = re.search(
+                r'product-thumb__image[^>]*>.*?<img[^>]*src="([^"]+)"',
+                block,
+                re.DOTALL,
+            )
+            if img_m:
+                image = img_m.group(1).strip()
+                if image and not image.startswith("http"):
+                    image = f"https://world-devices.ru{image}"
+                # Use larger cached size (600x600 is available)
+                image = re.sub(r"-\d+x\d+\.", "-600x600.", image)
+
+            # Stock status
+            stock = ""
+            stock_m = re.search(r"qty-indicator__text[^>]*>\s*(.*?)\s*</div>", block, re.DOTALL)
+            if stock_m:
+                stock = stock_m.group(1).strip()
+
+            results.append(
+                {
+                    "title": title[:200],
+                    "price": _fmt_price(price_num),
+                    "price_num": price_num,
+                    "url": url,
+                    "marketplace": "worlddevices",
+                    "image": image,
+                    "shop": "World Devices",
+                    "specs": stock,
+                    "category": "",
+                    "onliner_key": "",
+                }
+            )
+
+        return results

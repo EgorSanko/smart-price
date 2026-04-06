@@ -1,565 +1,458 @@
 """Ozon marketplace scraper.
 
-Scraper for ozon.ru using Playwright for JavaScript rendering.
-Ozon heavily relies on client-side rendering, making browser automation necessary.
+Uses Ozon's internal entrypoint-api.bx JSON endpoint.
+Falls back to Apify actor if the API is blocked by Cloudflare.
+Falls back to nodriver as last resort.
 """
 
-from __future__ import annotations
-
+import asyncio
 import json
-import logging
 import re
-from typing import TYPE_CHECKING, Any, AsyncGenerator
 
-from selectolax.parser import HTMLParser
-
-from app.scrapers.base import PlaywrightScraper, ScraperError
-
-if TYPE_CHECKING:
-    from app.schemas.product import ProductCreate
-
-logger = logging.getLogger(__name__)
+import httpx
+import structlog
 
 
-class OzonParseError(ScraperError):
-    """Error parsing Ozon data."""
+logger = structlog.get_logger()
 
-    pass
+_OZON_API_URL = "https://www.ozon.ru/api/entrypoint-api.bx/page/json/v2"
+
+_PRICE_RE = re.compile(r"[\d]+")
+
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "ru-RU,ru;q=0.9",
+    "Referer": "https://www.ozon.ru/",
+    "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+}
+
+ACCESSORY_KEYWORDS = [
+    "чехол",
+    "кейс",
+    "стекло",
+    "пленка",
+    "плёнка",
+    "кабель",
+    "зарядк",
+    "ремешок",
+    "адаптер",
+    "подставк",
+    "колонк",
+    "держатель",
+]
 
 
-class OzonScraper(PlaywrightScraper):
-    """Scraper for Ozon marketplace.
+def _is_accessory(title: str) -> bool:
+    t = title.lower()
+    return any(kw in t for kw in ACCESSORY_KEYWORDS)
 
-    Ozon uses heavy JavaScript rendering and stores product data in JSON
-    embedded within the page. This scraper uses Playwright to render pages
-    and extracts data from embedded JSON structures.
 
-    Attributes:
-        marketplace_name: "ozon"
-        base_url: "https://www.ozon.ru"
-        rate_limit: 0.5 requests per second (Ozon is aggressive with bans)
-    """
+def _parse_price(price_str: str | None) -> float:
+    """Parse price string like '89 990 ₽' into float 89990.0."""
+    if not price_str:
+        return 0.0
+    if isinstance(price_str, (int, float)):
+        return float(price_str)
+    digits = _PRICE_RE.findall(str(price_str))
+    if not digits:
+        return 0.0
+    try:
+        return float("".join(digits))
+    except ValueError:
+        return 0.0
 
-    marketplace_name: str = "ozon"
-    base_url: str = "https://www.ozon.ru"
-    rate_limit: float = 0.5  # Ozon aggressively bans scrapers
 
-    def __init__(
-        self,
-        marketplace_id: int = 1,
-        proxy_url: str | None = None,
-    ) -> None:
-        """Initialize Ozon scraper.
+def _fmt_price(price_num: float) -> str:
+    if price_num <= 0:
+        return ""
+    return f"{int(price_num):,}".replace(",", " ") + " ₽"
 
-        Args:
-            marketplace_id: Database ID for Ozon marketplace.
-            proxy_url: Optional proxy URL.
-        """
-        super().__init__(proxy_url=proxy_url)
-        self._marketplace_id = marketplace_id
 
-    def _parse_price(self, price_str: str | None) -> float | None:
-        """Parse price string to float.
+class OzonScraper:
+    """Ozon scraper: API → Apify actor → nodriver fallback."""
 
-        Args:
-            price_str: Price string like "1 234 ₽" or "1234".
+    marketplace_name = "ozon"
+    region = "RU"
+    currency = "RUB"
 
-        Returns:
-            Price as float or None if parsing fails.
-        """
-        if not price_str:
-            return None
-
-        # Remove all non-digit characters except decimal separator
-        cleaned = re.sub(r"[^\d,.]", "", price_str)
-        cleaned = cleaned.replace(",", ".")
+    async def search(self, query: str) -> list[dict]:
+        results: list[dict] = []
 
         try:
-            return float(cleaned)
-        except ValueError:
-            logger.warning("Failed to parse price: %s", price_str)
-            return None
+            # 1. Try the internal JSON API first
+            results = await self._search_via_api(query)
+            if results:
+                return results
 
-    def _extract_json_state(self, html: str) -> dict[str, Any] | None:
-        """Extract JSON state data from page HTML.
+            # 2. Fallback: Apify actor (bypasses Cloudflare)
+            results = await self._search_via_apify(query)
+            if results:
+                return results
 
-        Ozon embeds product data in __NUXT_DATA__ or data-state attributes.
+            # 3. Last resort: nodriver
+            results = await self._search_via_browser(query)
 
-        Args:
-            html: Raw HTML content.
+        except Exception as e:
+            logger.error("ozon_search_failed", error=str(e), query=query)
 
-        Returns:
-            Extracted JSON data or None.
-        """
-        tree = HTMLParser(html)
+        return results
 
-        # Try to find data in script tags
-        for script in tree.css("script"):
-            text = script.text(strip=True)
-            if not text:
-                continue
+    async def _search_via_api(self, query: str) -> list[dict]:
+        """Search via Ozon's internal entrypoint-api.bx endpoint."""
+        results: list[dict] = []
+        from app.config import settings
 
-            # Look for window.__NUXT_DATA__
-            if "__NUXT_DATA__" in text:
-                match = re.search(r"__NUXT_DATA__\s*=\s*(\[.+?\])\s*;?\s*$", text, re.DOTALL)
-                if match:
+        proxy = settings.SCRAPER_PROXY or None
+
+        try:
+            async with httpx.AsyncClient(
+                follow_redirects=True,
+                timeout=15,
+                http2=True,
+                proxy=proxy,
+            ) as client:
+                r = await client.get(
+                    _OZON_API_URL,
+                    params={"url": f"/search/?text={query}&from_global=true"},
+                    headers=HEADERS,
+                )
+
+                if r.status_code != 200:
+                    logger.warning("ozon_api_status", status=r.status_code, query=query)
+                    return []
+
+                data = r.json()
+
+            # Extract products from widgetStates
+            widget_states = data.get("widgetStates", {})
+
+            for key, value in widget_states.items():
+                if "searchResultsV2" not in key:
+                    continue
+
+                if isinstance(value, str):
                     try:
-                        return {"nuxt_data": json.loads(match.group(1))}
+                        state = json.loads(value)
                     except json.JSONDecodeError:
                         continue
+                else:
+                    state = value
 
-            # Look for JSON in script type="application/json"
-            if text.startswith("{") or text.startswith("["):
-                try:
-                    data = json.loads(text)
-                    if isinstance(data, dict) and ("items" in data or "products" in data):
-                        return data
-                except json.JSONDecodeError:
-                    continue
+                items = state.get("items", [])
+                for item in items:
+                    product = self._parse_api_item(item)
+                    if product:
+                        results.append(product)
 
-        # Try data-state attributes on widgets
-        for element in tree.css("[data-state]"):
-            data_state = element.attributes.get("data-state", "")
-            if data_state:
-                try:
-                    data = json.loads(data_state)
-                    if "items" in data or "products" in data:
-                        return data
-                except json.JSONDecodeError:
-                    continue
-
-        return None
-
-    def _parse_search_item(self, item: dict[str, Any]) -> dict[str, Any] | None:
-        """Parse single item from search results.
-
-        Args:
-            item: Raw item data from JSON.
-
-        Returns:
-            Normalized product data or None.
-        """
-        try:
-            product_id = str(item.get("id", ""))
-            if not product_id:
-                return None
-
-            # Extract title from mainState
-            title = None
-            price = None
-            original_price = None
-            image_url = None
-            rating = None
-            reviews_count = 0
-
-            main_state = item.get("mainState", [])
-            for state in main_state:
-                atom = state.get("atom", {})
-                atom_type = atom.get("type", "")
-
-                if atom_type == "title":
-                    text_atom = atom.get("textAtom", {})
-                    title = text_atom.get("text", "")
-
-                elif atom_type == "price":
-                    price_atom = atom.get("priceAtom", {})
-                    price = self._parse_price(price_atom.get("price"))
-                    original_price = self._parse_price(price_atom.get("originalPrice"))
-
-                elif atom_type == "rating":
-                    rating_atom = atom.get("ratingAtom", {})
-                    rating = rating_atom.get("rating")
-                    reviews_count = rating_atom.get("count", 0)
-
-            # Fallback: try direct fields
-            if not title:
-                title = item.get("name") or item.get("title", "")
-
-            if not price:
-                price = self._parse_price(str(item.get("price", "")))
-
-            if not title or not price:
-                return None
-
-            # Image URL
-            tile_image = item.get("tileImage", {})
-            image_url = tile_image.get("url") or item.get("image")
-            if image_url and not image_url.startswith("http"):
-                image_url = f"https:{image_url}"
-
-            # Additional images
-            images = []
-            for img in item.get("images", []):
-                url = img if isinstance(img, str) else img.get("url", "")
-                if url:
-                    images.append(url if url.startswith("http") else f"https:{url}")
-
-            return {
-                "external_id": product_id,
-                "title": title,
-                "price": price,
-                "original_price": original_price,
-                "image_url": image_url,
-                "images": images,
-                "rating": rating,
-                "reviews_count": reviews_count,
-                "url": f"{self.base_url}/product/{product_id}",
-            }
+                if results:
+                    logger.info("ozon_api_ok", query=query, count=len(results))
+                    return results
 
         except Exception as e:
-            logger.warning("Failed to parse item: %s", e)
-            return None
+            logger.debug("ozon_api_failed", error=str(e))
 
-    def _create_product(self, data: dict[str, Any]) -> ProductCreate:
-        """Create ProductCreate schema from parsed data.
+        return results
 
-        Args:
-            data: Normalized product data.
+    async def _search_via_apify(self, query: str) -> list[dict]:
+        """Search via Apify Ozon scraper actor (bypasses Cloudflare)."""
+        from app.config import settings
 
-        Returns:
-            ProductCreate instance.
-        """
-        # Import here to avoid circular imports
-        from app.schemas.product import ProductCreate
-
-        return ProductCreate(
-            external_id=data["external_id"],
-            marketplace_id=self._marketplace_id,
-            title=data["title"],
-            current_price=data["price"],
-            original_price=data.get("original_price"),
-            url=data["url"],
-            image_url=data.get("image_url"),
-            images=data.get("images", []),
-            rating=data.get("rating"),
-            reviews_count=data.get("reviews_count", 0),
-        )
-
-    async def search(
-        self,
-        query: str,
-        page: int = 1,
-        **kwargs,
-    ) -> list[ProductCreate]:
-        """Search for products on Ozon.
-
-        Args:
-            query: Search query string.
-            page: Page number (1-indexed).
-            **kwargs: Additional parameters (not used).
-
-        Returns:
-            List of found products.
-
-        Example:
-            >>> async with OzonScraper() as scraper:
-            ...     products = await scraper.search("iphone 15")
-            ...     print(f"Found {len(products)} products")
-        """
-        url = f"{self.base_url}/search/?text={query}&page={page}"
-
-        logger.info("Searching Ozon: query=%s, page=%d", query, page)
-
-        try:
-            html = await self.fetch_js(
-                url,
-                wait_selector='[data-widget="searchResultsV2"]',
-                wait_timeout=15000,
-            )
-        except Exception as e:
-            logger.error("Failed to fetch search page: %s", e)
+        token = settings.APIFY_API_TOKEN
+        if not token:
+            logger.debug("ozon_apify_no_token")
             return []
 
-        return self._parse_search_results(html)
+        actor_id = "zen-studio~ozon-scraper-pro"
+        run_url = f"https://api.apify.com/v2/acts/{actor_id}/runs"
 
-    def _parse_search_results(self, html: str) -> list[ProductCreate]:
-        """Parse search results page.
-
-        Args:
-            html: Raw HTML content.
-
-        Returns:
-            List of parsed products.
-        """
-        products: list[ProductCreate] = []
-
-        # Try JSON extraction first
-        json_data = self._extract_json_state(html)
-        if json_data:
-            items = json_data.get("items", json_data.get("products", []))
-            for item in items:
-                parsed = self._parse_search_item(item)
-                if parsed:
-                    products.append(self._create_product(parsed))
-
-        # Fallback to HTML parsing if no JSON found
-        if not products:
-            products = self._parse_search_html(html)
-
-        logger.info("Parsed %d products from search results", len(products))
-        return products
-
-    def _parse_search_html(self, html: str) -> list[ProductCreate]:
-        """Fallback HTML parsing for search results.
-
-        Args:
-            html: Raw HTML content.
-
-        Returns:
-            List of parsed products.
-        """
-        products: list[ProductCreate] = []
-        tree = HTMLParser(html)
-
-        # Find product cards
-        cards = tree.css('[data-widget="searchResultsV2"] .tile-root, .j8t')
-
-        for card in cards:
-            try:
-                # Extract link to get product ID
-                link = card.css_first("a[href*='/product/']")
-                if not link:
-                    continue
-
-                href = link.attributes.get("href", "")
-                match = re.search(r"/product/[^/]+-(\d+)/", href)
-                if not match:
-                    match = re.search(r"/product/(\d+)", href)
-                if not match:
-                    continue
-
-                product_id = match.group(1)
-
-                # Title
-                title_el = card.css_first(".tsBody500Medium, .tile-title")
-                title = title_el.text(strip=True) if title_el else ""
-
-                if not title:
-                    continue
-
-                # Price
-                price_el = card.css_first('[data-widget="searchResultsV2"] .c3015-a1')
-                if not price_el:
-                    price_el = card.css_first(".price-number, .c3015-a0")
-
-                price = self._parse_price(price_el.text() if price_el else None)
-                if not price:
-                    continue
-
-                # Image
-                img = card.css_first("img")
-                image_url = img.attributes.get("src") if img else None
-
-                products.append(
-                    self._create_product(
-                        {
-                            "external_id": product_id,
-                            "title": title,
-                            "price": price,
-                            "url": f"{self.base_url}/product/{product_id}",
-                            "image_url": image_url,
-                        }
-                    )
-                )
-
-            except Exception as e:
-                logger.warning("Failed to parse card: %s", e)
-                continue
-
-        return products
-
-    async def get_product(self, product_id: str) -> ProductCreate | None:
-        """Get detailed product information.
-
-        Args:
-            product_id: Ozon product ID.
-
-        Returns:
-            Product data or None if not found.
-        """
-        url = f"{self.base_url}/product/{product_id}"
-
-        logger.info("Fetching Ozon product: %s", product_id)
+        run_input = {
+            "query": query,
+            "maxItems": 30,
+            "proxyCountry": "RU",
+        }
 
         try:
-            html = await self.fetch_js(
-                url,
-                wait_selector='[data-widget="webPrice"]',
-                wait_timeout=15000,
-            )
+            async with httpx.AsyncClient(timeout=90) as client:
+                # Start the actor run (synchronous mode — wait up to 60s)
+                r = await client.post(
+                    run_url,
+                    json=run_input,
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json",
+                    },
+                    params={"waitForFinish": 60},
+                    timeout=90,
+                )
+
+                if r.status_code not in (200, 201):
+                    logger.warning(
+                        "ozon_apify_run_failed",
+                        status=r.status_code,
+                        body=r.text[:300],
+                    )
+                    return []
+
+                run_data = r.json().get("data", {})
+                status = run_data.get("status")
+                dataset_id = run_data.get("defaultDatasetId")
+
+                if not dataset_id:
+                    logger.warning("ozon_apify_no_dataset", status=status)
+                    return []
+
+                # If still running, poll briefly
+                if status not in ("SUCCEEDED", "FINISHED"):
+                    run_id = run_data.get("id")
+                    for _ in range(6):
+                        await asyncio.sleep(10)
+                        check = await client.get(
+                            f"https://api.apify.com/v2/actor-runs/{run_id}",
+                            headers={"Authorization": f"Bearer {token}"},
+                        )
+                        if check.status_code == 200:
+                            st = check.json().get("data", {}).get("status")
+                            if st in ("SUCCEEDED", "FINISHED"):
+                                break
+                            if st in ("FAILED", "ABORTED", "TIMED-OUT"):
+                                logger.warning("ozon_apify_run_status", status=st)
+                                return []
+
+                # Fetch dataset items
+                items_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items"
+                items_r = await client.get(
+                    items_url,
+                    headers={"Authorization": f"Bearer {token}"},
+                    params={"format": "json", "limit": 30},
+                )
+
+                if items_r.status_code != 200:
+                    logger.warning("ozon_apify_dataset_failed", status=items_r.status_code)
+                    return []
+
+                items = items_r.json()
+                if not isinstance(items, list):
+                    items = []
+
+                results = []
+                for item in items:
+                    product = self._parse_apify_item(item)
+                    if product:
+                        results.append(product)
+
+                if results:
+                    logger.info("ozon_apify_ok", query=query, count=len(results))
+
+                return results
+
         except Exception as e:
-            logger.error("Failed to fetch product page: %s", e)
-            return None
+            logger.error("ozon_apify_error", error=str(e), query=query)
+            return []
 
-        return self._parse_product_page(html, product_id)
-
-    def _parse_product_page(self, html: str, product_id: str) -> ProductCreate | None:
-        """Parse product detail page.
-
-        Args:
-            html: Raw HTML content.
-            product_id: Product ID for fallback.
-
-        Returns:
-            Product data or None.
-        """
-        tree = HTMLParser(html)
-
-        # Title
-        title_el = tree.css_first('h1[data-widget="webProductHeading"], h1')
-        title = title_el.text(strip=True) if title_el else None
+    def _parse_apify_item(self, item: dict) -> dict | None:
+        """Parse a product from Apify Ozon actor output."""
+        title = (item.get("title") or item.get("name") or item.get("productName") or "").strip()
 
         if not title:
-            logger.warning("No title found for product %s", product_id)
             return None
 
-        # Price
-        price_el = tree.css_first('[data-widget="webPrice"] span, .price-number')
-        price = self._parse_price(price_el.text() if price_el else None)
-
-        if not price:
-            # Try alternative price location
-            price_el = tree.css_first(".c3015-a0, .c3015-a1")
-            price = self._parse_price(price_el.text() if price_el else None)
-
-        if not price:
-            logger.warning("No price found for product %s", product_id)
+        if _is_accessory(title):
             return None
 
-        # Original price
-        original_el = tree.css_first('[data-widget="webPrice"] del, .original-price')
-        original_price = self._parse_price(original_el.text() if original_el else None)
+        # Price — Apify actors return various formats
+        price_num = 0.0
+        for key in ("price", "finalPrice", "currentPrice", "salePrice"):
+            val = item.get(key)
+            if val:
+                price_num = _parse_price(val)
+                if price_num > 0:
+                    break
 
-        # Brand
-        brand = None
-        brand_el = tree.css_first('[data-widget="webBrand"] a, .brand-name')
-        if brand_el:
-            brand = brand_el.text(strip=True)
+        if price_num <= 0:
+            return None
+
+        # URL
+        url = item.get("url") or item.get("link") or ""
+        if url and not url.startswith("http"):
+            url = f"https://www.ozon.ru{url}"
+
+        product_id = str(item.get("id") or item.get("productId") or "")
+        if not url and product_id:
+            url = f"https://www.ozon.ru/product/{product_id}"
+
+        # Image
+        image = ""
+        img = item.get("image") or item.get("imageUrl") or item.get("mainImage")
+        if isinstance(img, str):
+            image = img
+        elif isinstance(img, list) and img:
+            image = img[0] if isinstance(img[0], str) else ""
 
         # Rating
-        rating = None
-        rating_el = tree.css_first('[data-widget="webSingleProductScore"] span')
-        if rating_el:
-            try:
-                rating = float(rating_el.text(strip=True))
-            except ValueError:
-                pass
+        rating = item.get("rating", 0)
+        reviews = item.get("reviewsCount") or item.get("feedbackCount") or 0
 
-        # Reviews count
-        reviews_count = 0
-        reviews_el = tree.css_first('[data-widget="webReviewProductScore"] span')
-        if reviews_el:
-            text = reviews_el.text(strip=True)
-            match = re.search(r"(\d[\d\s]*)", text)
-            if match:
-                reviews_count = int(match.group(1).replace(" ", ""))
+        specs = ""
+        if rating:
+            specs = f"★ {rating}"
+            if reviews:
+                specs += f" ({reviews} отзывов)"
 
-        # Description
-        description = None
-        desc_el = tree.css_first('[data-widget="webDescription"]')
-        if desc_el:
-            description = desc_el.text(strip=True)[:5000]  # Limit length
+        return {
+            "title": title,
+            "price": _fmt_price(price_num),
+            "price_num": price_num,
+            "url": url,
+            "marketplace": "ozon",
+            "image": image,
+            "shop": "Ozon",
+            "specs": specs,
+            "category": "",
+            "onliner_key": "",
+        }
 
-        # Images
-        images = []
-        for img in tree.css('[data-widget="webGallery"] img'):
-            src = img.attributes.get("src", "")
-            if src and "wc" in src:  # Filter thumbnails
-                # Get full-size image URL
-                full_url = re.sub(r"/wc\d+/", "/wc1000/", src)
-                images.append(full_url)
+    def _parse_api_item(self, item: dict) -> dict | None:
+        """Parse a product from Ozon's JSON API response."""
+        title = None
+        price_num = 0.0
 
-        # Main image
-        image_url = images[0] if images else None
+        main_state = item.get("mainState", [])
+        for block in main_state:
+            atom = block.get("atom", {})
+            atom_type = atom.get("type", "")
 
-        # Availability
-        is_available = True
-        out_of_stock = tree.css_first('[data-widget="webOutOfStock"]')
-        if out_of_stock:
-            is_available = False
+            if atom_type == "title":
+                text_atom = atom.get("textAtom", {})
+                title = text_atom.get("text", "")
 
-        # Seller
-        seller_name = None
-        seller_el = tree.css_first('[data-widget="webCurrentSeller"] a')
-        if seller_el:
-            seller_name = seller_el.text(strip=True)
+            elif atom_type == "price":
+                price_atom = atom.get("priceAtom", {})
+                price_num = _parse_price(price_atom.get("price"))
 
-        # Specifications
-        specs = {}
-        for row in tree.css('[data-widget="webCharacteristics"] dl'):
-            dt = row.css_first("dt")
-            dd = row.css_first("dd")
-            if dt and dd:
-                key = dt.text(strip=True)
-                value = dd.text(strip=True)
-                if key and value:
-                    specs[key] = value
+        if not title:
+            title = item.get("name") or item.get("title") or ""
 
-        from app.schemas.product import ProductCreate
+        if not price_num:
+            price_num = _parse_price(item.get("finalPrice") or item.get("price") or "")
 
-        return ProductCreate(
-            external_id=product_id,
-            marketplace_id=self._marketplace_id,
-            title=title,
-            description=description,
-            brand=brand,
-            current_price=price,
-            original_price=original_price,
-            url=f"{self.base_url}/product/{product_id}",
-            image_url=image_url,
-            images=images,
-            rating=rating,
-            reviews_count=reviews_count,
-            is_available=is_available,
-            seller_name=seller_name,
-            specs=specs,
-        )
+        if not title or not price_num:
+            return None
 
-    async def get_category(
-        self,
-        category_url: str,
-        max_pages: int = 10,
-    ) -> AsyncGenerator[ProductCreate, None]:
-        """Iterate over products in a category.
+        if _is_accessory(title):
+            return None
 
-        Args:
-            category_url: URL of the category page.
-            max_pages: Maximum number of pages to scrape.
+        product_id = str(item.get("id", ""))
 
-        Yields:
-            Product data for each product.
+        image = ""
+        tile_image = item.get("tileImage")
+        if isinstance(tile_image, dict):
+            image = tile_image.get("url", "")
+        elif isinstance(tile_image, str):
+            image = tile_image
 
-        Example:
-            >>> async with OzonScraper() as scraper:
-            ...     async for product in scraper.get_category(
-            ...         "https://www.ozon.ru/category/smartfony-15502/"
-            ...     ):
-            ...         print(product.title)
-        """
-        logger.info("Scraping Ozon category: %s", category_url)
+        rating = item.get("rating", 0)
+        reviews = item.get("reviewsCount") or item.get("feedbackCount") or 0
 
-        for page in range(1, max_pages + 1):
-            # Add page parameter
-            separator = "&" if "?" in category_url else "?"
-            url = f"{category_url}{separator}page={page}"
+        specs = ""
+        if rating:
+            specs = f"★ {rating}"
+            if reviews:
+                specs += f" ({reviews} отзывов)"
 
-            try:
-                html = await self.fetch_js(
-                    url,
-                    wait_selector='[data-widget="searchResultsV2"]',
-                    wait_timeout=15000,
+        return {
+            "title": title.strip(),
+            "price": _fmt_price(price_num),
+            "price_num": price_num,
+            "url": f"https://www.ozon.ru/product/{product_id}" if product_id else "",
+            "marketplace": "ozon",
+            "image": image,
+            "shop": "Ozon",
+            "specs": specs,
+            "category": "",
+            "onliner_key": "",
+        }
+
+    async def _search_via_browser(self, query: str) -> list[dict]:
+        """Fallback: use nodriver (undetectable Chrome) to render Ozon."""
+        results: list[dict] = []
+
+        try:
+            import nodriver as uc
+        except ImportError:
+            logger.debug("ozon_nodriver_not_available")
+            return []
+
+        browser = None
+        try:
+            browser = await uc.start(headless=True)
+            page = await browser.get(f"https://www.ozon.ru/search/?text={query}&from_global=true")
+
+            await page.sleep(5)
+
+            source = await page.get_content()
+
+            if not source or "captcha" in source.lower():
+                logger.warning("ozon_nodriver_blocked", query=query)
+                browser.stop()
+                return []
+
+            import re as _re
+
+            for state_match in _re.finditer(r'data-state="([^"]+)"', source):
+                raw = state_match.group(1)
+                decoded = (
+                    raw.replace("&quot;", '"')
+                    .replace("&amp;", "&")
+                    .replace("&lt;", "<")
+                    .replace("&gt;", ">")
                 )
-            except Exception as e:
-                logger.error("Failed to fetch category page %d: %s", page, e)
-                break
+                try:
+                    state = json.loads(decoded)
+                except (json.JSONDecodeError, ValueError):
+                    continue
 
-            products = self._parse_search_results(html)
+                items = state.get("items", [])
+                for item in items:
+                    product = self._parse_api_item(item)
+                    if product:
+                        results.append(product)
 
-            if not products:
-                logger.info("No products on page %d, stopping", page)
-                break
+                if results:
+                    break
 
-            for product in products:
-                yield product
+            if not results:
+                for script_match in _re.finditer(r'"widgetStates"\s*:\s*(\{[^}]+\})', source):
+                    try:
+                        ws = json.loads(script_match.group(1))
+                        for k, v in ws.items():
+                            if "searchResultsV2" in k:
+                                state = json.loads(v) if isinstance(v, str) else v
+                                for item in state.get("items", []):
+                                    product = self._parse_api_item(item)
+                                    if product:
+                                        results.append(product)
+                                if results:
+                                    break
+                    except (json.JSONDecodeError, ValueError):
+                        continue
 
-            logger.info("Scraped page %d: %d products", page, len(products))
+            if results:
+                logger.info("ozon_nodriver_ok", query=query, count=len(results))
+
+        except Exception as e:
+            logger.error("ozon_nodriver_failed", error=str(e), query=query)
+        finally:
+            if browser:
+                try:
+                    browser.stop()
+                except Exception:
+                    pass
+
+        return results

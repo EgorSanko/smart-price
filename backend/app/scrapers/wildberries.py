@@ -1,680 +1,298 @@
-"""Wildberries marketplace scraper with anti-detection measures.
+"""Wildberries marketplace scraper.
 
-Scraper for wildberries.ru using their public API endpoints.
-Includes anti-bot protection bypass: random delays, UA rotation, retry logic.
+Uses the undocumented WB search API (v18).
+Includes retry with exponential backoff for 429 rate limits.
 """
 
-from __future__ import annotations
-
-import logging
+import asyncio
 import random
-from typing import TYPE_CHECKING, Any, AsyncGenerator
 
 import httpx
-
-from app.scrapers.base import BaseScraper, RateLimitError, ScraperError
-from app.scrapers.utils import (
-    get_random_user_agent,
-    human_like_delay,
-    parse_price,
-    random_delay,
-    with_retry,
-)
-
-if TYPE_CHECKING:
-    from app.schemas.product import ProductCreate
-
-logger = logging.getLogger(__name__)
+import structlog
 
 
-class WildberriesAPIError(ScraperError):
-    """Error from Wildberries API."""
+logger = structlog.get_logger()
 
-    pass
+_WB_API_VERSIONS = ["v18", "v17", "v19", "v7"]
+
+_WB_SEARCH_DOMAINS = ["search.wb.ru", "search.wildberries.ru"]
+_WB_SEARCH_URL_TPL = "https://{domain}/exactmatch/ru/common/{version}/search"
+
+HEADERS = {
+    "Accept": "*/*",
+    "Accept-Language": "ru-RU,ru;q=0.9",
+    "Origin": "https://www.wildberries.ru",
+    "Referer": "https://www.wildberries.ru/",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) " "Gecko/20100101 Firefox/109.0"
+    ),
+}
+
+ACCESSORY_KEYWORDS = [
+    "чехол",
+    "кейс",
+    "стекло",
+    "пленка",
+    "плёнка",
+    "кабель",
+    "зарядк",
+    "ремешок",
+    "адаптер",
+    "подставк",
+    "наушник",
+    "колонк",
+    "держатель",
+    "бампер",
+    "накладк",
+    "защитн",
+]
+
+_BASKET_RANGES: list[tuple[int, str]] = [
+    (143, "01"),
+    (287, "02"),
+    (431, "03"),
+    (719, "04"),
+    (1007, "05"),
+    (1061, "06"),
+    (1115, "07"),
+    (1169, "08"),
+    (1313, "09"),
+    (1601, "10"),
+    (1655, "11"),
+    (1919, "12"),
+    (2045, "13"),
+    (2189, "14"),
+    (2405, "15"),
+    (2621, "16"),
+    (2837, "17"),
+    (3053, "18"),
+    (3269, "19"),
+    (3485, "20"),
+    (3701, "21"),
+    (3917, "22"),
+    (4133, "23"),
+    (4349, "24"),
+    (4565, "25"),
+    (4781, "26"),
+    (5189, "27"),
+    (5501, "28"),
+    (5860, "29"),
+    (6120, "30"),
+    (6400, "31"),
+    (6700, "32"),
+    (7000, "33"),
+    (7300, "34"),
+    (7700, "35"),
+    (7900, "36"),
+    (8300, "37"),
+    (8600, "38"),
+]
 
 
-class WildberriesScraper(BaseScraper):
-    """Scraper for Wildberries marketplace with anti-detection.
+def _is_accessory(title: str) -> bool:
+    t = title.lower()
+    return any(kw in t for kw in ACCESSORY_KEYWORDS)
 
-    Wildberries has public API endpoints for search and product data.
-    This scraper includes protection against 429 rate limiting:
-    - Random delays between requests (2-5 seconds)
-    - User-Agent rotation
-    - Exponential backoff on errors
-    - Optional proxy support
 
-    Attributes:
-        marketplace_name: "wildberries"
-        base_url: "https://www.wildberries.ru"
-        rate_limit: 0.3 requests per second (conservative)
+def _fmt_price(price_num: float) -> str:
+    if price_num <= 0:
+        return ""
+    return f"{int(price_num):,}".replace(",", " ") + " ₽"
+
+
+def _get_basket_number(vol: int) -> str:
+    for max_vol, basket in _BASKET_RANGES:
+        if vol <= max_vol:
+            return basket
+    return "39"
+
+
+def _build_image_url(product_id: int) -> str:
+    vol = product_id // 100_000
+    part = product_id // 1_000
+    basket = _get_basket_number(vol)
+    basket_num = int(basket)
+    # Newer baskets (17+) use wbcontent.net, older use wbbasket.ru
+    domain = "wbcontent.net" if basket_num >= 17 else "wbbasket.ru"
+    return (
+        f"https://basket-{basket}.{domain}" f"/vol{vol}/part{part}/{product_id}/images/big/1.webp"
+    )
+
+
+def _extract_price(item: dict) -> float:
+    """Extract price in rubles from WB product item.
+
+    WB stores prices in different places depending on API version:
+    - sizes[0].price.product (kopecks, v18+)
+    - salePriceU (kopecks, older versions)
     """
+    # Try sizes[].price.product first (v18 format)
+    sizes = item.get("sizes", [])
+    if sizes:
+        price_obj = sizes[0].get("price", {})
+        product_price = price_obj.get("product") or price_obj.get("total") or 0
+        if product_price > 0:
+            return float(product_price) / 100.0
 
-    marketplace_name: str = "wildberries"
-    base_url: str = "https://www.wildberries.ru"
-    rate_limit: float = 0.3  # ~1 request per 3 seconds
+    # Fallback to salePriceU
+    raw = item.get("salePriceU") or item.get("priceU") or 0
+    if raw > 0:
+        return float(raw) / 100.0
 
-    # API endpoints
-    _search_api: str = "https://search.wb.ru/exactmatch/ru/common/v7/search"
-    _card_api: str = "https://card.wb.ru/cards/v2/detail"
-    _seller_api: str = "https://www.wildberries.ru/webapi/seller/data/short"
+    return 0.0
 
-    # Default destination (Moscow region)
-    _default_dest: int = -1257786
 
-    def __init__(
-        self,
-        marketplace_id: int = 2,
-        proxy_url: str | None = None,
-        dest: int | None = None,
-        min_delay: float = 2.0,
-        max_delay: float = 5.0,
-    ) -> None:
-        """Initialize Wildberries scraper with anti-detection settings.
+class WildberriesScraper:
+    """Wildberries scraper using the public search API."""
 
-        Args:
-            marketplace_id: Database ID for Wildberries marketplace.
-            proxy_url: Optional proxy URL for requests.
-            dest: Destination region ID (default: Moscow).
-            min_delay: Minimum delay between requests (seconds).
-            max_delay: Maximum delay between requests (seconds).
-        """
-        super().__init__(proxy_url=proxy_url)
-        self._marketplace_id = marketplace_id
-        self._dest = dest or self._default_dest
-        self._min_delay = min_delay
-        self._max_delay = max_delay
-        self._request_count = 0
+    marketplace_name = "wildberries"
+    region = "RU"
+    currency = "RUB"
 
-    def _get_headers(self) -> dict[str, str]:
-        """Get randomized headers for each request."""
-        user_agent = get_random_user_agent(mobile=random.random() > 0.7)
+    async def _fetch_with_retry(self, params: dict, query: str) -> dict:
+        """Try multiple API versions with exponential backoff on 429."""
+        from app.config import settings
 
-        headers = {
-            "User-Agent": user_agent,
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Origin": self.base_url,
-            "Referer": f"{self.base_url}/",
-            "Connection": "keep-alive",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "cross-site",
-        }
+        proxy = settings.SCRAPER_PROXY or None
 
-        # Randomly add optional headers
-        if random.random() > 0.5:
-            headers["DNT"] = "1"
+        for domain in _WB_SEARCH_DOMAINS:
+            for version in _WB_API_VERSIONS:
+                url = _WB_SEARCH_URL_TPL.format(domain=domain, version=version)
 
-        if random.random() > 0.5:
-            headers["Sec-CH-UA"] = (
-                '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"'
-            )
-            headers["Sec-CH-UA-Mobile"] = "?0"
-            headers["Sec-CH-UA-Platform"] = '"Windows"'
+                for attempt in range(2):
+                    try:
+                        async with httpx.AsyncClient(
+                            follow_redirects=True,
+                            timeout=15,
+                            proxy=proxy,
+                        ) as client:
+                            r = await client.get(url, params=params, headers=HEADERS)
 
-        return headers
+                            if r.status_code == 200:
+                                data = r.json()
+                                if data:
+                                    logger.info(
+                                        "wb_search_ok",
+                                        domain=domain,
+                                        version=version,
+                                        query=query,
+                                        attempt=attempt,
+                                    )
+                                    return data
 
-    async def _make_request(
-        self,
-        url: str,
-        params: dict | None = None,
-        retry_count: int = 3,
-    ) -> dict:
-        """Make API request with anti-detection measures.
+                            if r.status_code == 429:
+                                wait = 1.5 + random.uniform(0.5, 1.5)
+                                logger.warning(
+                                    "wb_rate_limited",
+                                    domain=domain,
+                                    version=version,
+                                    attempt=attempt,
+                                    wait=wait,
+                                )
+                                await asyncio.sleep(wait)
+                                continue
 
-        Args:
-            url: API endpoint URL.
-            params: Query parameters.
-            retry_count: Number of retries on failure.
+                            # Other error — try next version
+                            logger.debug(
+                                "wb_api_error",
+                                domain=domain,
+                                version=version,
+                                status=r.status_code,
+                            )
+                            break
 
-        Returns:
-            JSON response data.
+                    except Exception as e:
+                        logger.debug("wb_fetch_error", domain=domain, version=version, error=str(e))
+                        break
 
-        Raises:
-            WildberriesAPIError: If request fails after retries.
-        """
-        last_error = None
+        return {}
 
-        for attempt in range(retry_count):
-            try:
-                # Random delay before request (anti-bot)
-                if self._request_count > 0:
-                    delay = random.uniform(self._min_delay, self._max_delay)
-                    logger.debug("Waiting %.1f seconds before request", delay)
-                    await random_delay(delay, delay + 1)
-
-                self._request_count += 1
-
-                # Create fresh client with new headers for each request
-                async with httpx.AsyncClient(
-                    timeout=httpx.Timeout(30.0, connect=10.0),
-                    headers=self._get_headers(),
-                    follow_redirects=True,
-                ) as client:
-                    response = await client.get(url, params=params)
-
-                    if response.status_code == 429:
-                        wait_time = (attempt + 1) * 10  # 10, 20, 30 seconds
-                        logger.warning(
-                            "Rate limited (429), waiting %d seconds (attempt %d/%d)",
-                            wait_time,
-                            attempt + 1,
-                            retry_count,
-                        )
-                        await random_delay(wait_time, wait_time + 5)
-                        continue
-
-                    response.raise_for_status()
-                    return response.json()
-
-            except httpx.HTTPStatusError as e:
-                last_error = e
-                logger.warning(
-                    "HTTP error %s (attempt %d/%d): %s",
-                    e.response.status_code,
-                    attempt + 1,
-                    retry_count,
-                    str(e),
-                )
-                if attempt < retry_count - 1:
-                    await random_delay(5, 10)
-
-            except Exception as e:
-                last_error = e
-                logger.warning(
-                    "Request error (attempt %d/%d): %s",
-                    attempt + 1,
-                    retry_count,
-                    str(e),
-                )
-                if attempt < retry_count - 1:
-                    await random_delay(3, 7)
-
-        raise WildberriesAPIError(f"Failed after {retry_count} attempts: {last_error}")
-
-    @staticmethod
-    def _get_basket_host(vol: int) -> str:
-        """Determine CDN basket host based on volume number.
-
-        Wildberries uses multiple CDN hosts based on product ID ranges.
-
-        Args:
-            vol: Volume number (product_id // 100000).
-
-        Returns:
-            Basket host number as string.
-        """
-        if vol <= 143:
-            return "01"
-        elif vol <= 287:
-            return "02"
-        elif vol <= 431:
-            return "03"
-        elif vol <= 719:
-            return "04"
-        elif vol <= 1007:
-            return "05"
-        elif vol <= 1061:
-            return "06"
-        elif vol <= 1115:
-            return "07"
-        elif vol <= 1169:
-            return "08"
-        elif vol <= 1313:
-            return "09"
-        elif vol <= 1601:
-            return "10"
-        elif vol <= 1655:
-            return "11"
-        elif vol <= 1919:
-            return "12"
-        elif vol <= 2045:
-            return "13"
-        elif vol <= 2189:
-            return "14"
-        elif vol <= 2405:
-            return "15"
-        elif vol <= 2621:
-            return "16"
-        else:
-            return "17"
-
-    def _build_image_url(
-        self,
-        product_id: int,
-        photo_number: int = 1,
-        size: str = "big",
-    ) -> str:
-        """Build image URL for a product.
-
-        Args:
-            product_id: Product ID.
-            photo_number: Photo number (1-indexed).
-            size: Image size ('big', 'c516x688', etc.).
-
-        Returns:
-            Full image URL.
-        """
-        vol = product_id // 100000
-        part = product_id // 1000
-        basket = self._get_basket_host(vol)
-
-        return (
-            f"https://basket-{basket}.wbbasket.ru/"
-            f"vol{vol}/part{part}/{product_id}/images/{size}/{photo_number}.webp"
-        )
-
-    def _parse_api_product(self, item: dict[str, Any]) -> dict[str, Any]:
-        """Parse product data from API response.
-
-        Args:
-            item: Raw product data from API.
-
-        Returns:
-            Normalized product data.
-        """
-        product_id = item.get("id", 0)
-
-        # WB stores prices in kopecks
-        sale_price = item.get("sizes", [{}])[0].get("price", {}).get("product", 0) / 100
-        original_price = item.get("sizes", [{}])[0].get("price", {}).get("basic", 0) / 100
-
-        # Fallback to old price fields
-        if not sale_price:
-            sale_price = item.get("salePriceU", 0) / 100
-        if not original_price:
-            original_price = item.get("priceU", 0) / 100
-
-        # Check availability
-        is_available = any(
-            size.get("stocks", []) for size in item.get("sizes", [])
-        )
-
-        # Rating
-        rating = item.get("reviewRating", item.get("rating"))
-
-        # Reviews count
-        reviews_count = item.get("feedbacks", item.get("feedbackCount", 0))
-
-        # Build image URLs
-        image_url = self._build_image_url(product_id)
-        images = [self._build_image_url(product_id, i) for i in range(1, 11)]
-
-        return {
-            "external_id": str(product_id),
-            "title": item.get("name", ""),
-            "brand": item.get("brand", ""),
-            "price": sale_price,
-            "original_price": original_price if original_price > sale_price else None,
-            "url": f"{self.base_url}/catalog/{product_id}/detail.aspx",
-            "image_url": image_url,
-            "images": images,
-            "rating": rating,
-            "reviews_count": reviews_count,
-            "is_available": is_available,
-            "seller_id": item.get("supplierId"),
-            "seller_name": item.get("supplier"),
-            "category_id": item.get("subjectId"),
-            "category_name": item.get("subjectParentName"),
-            "colors": [c.get("name") for c in item.get("colors", [])],
-        }
-
-    def _create_product(self, data: dict[str, Any]) -> ProductCreate:
-        """Create ProductCreate schema from parsed data.
-
-        Args:
-            data: Normalized product data.
-
-        Returns:
-            ProductCreate instance.
-        """
-        from app.schemas.product import ProductCreate
-
-        return ProductCreate(
-            external_id=data["external_id"],
-            marketplace_id=self._marketplace_id,
-            title=data["title"],
-            brand=data.get("brand"),
-            current_price=data["price"],
-            original_price=data.get("original_price"),
-            url=data["url"],
-            image_url=data.get("image_url"),
-            images=data.get("images", []),
-            rating=data.get("rating"),
-            reviews_count=data.get("reviews_count", 0),
-            is_available=data.get("is_available", True),
-            seller_name=data.get("seller_name"),
-        )
-
-    async def search(
-        self,
-        query: str,
-        page: int = 1,
-        sort: str = "popular",
-        **kwargs,
-    ) -> list[ProductCreate]:
-        """Search for products on Wildberries.
-
-        Args:
-            query: Search query string.
-            page: Page number (1-indexed).
-            sort: Sort order ('popular', 'rate', 'priceup', 'pricedown', 'newly').
-            **kwargs: Additional parameters.
-
-        Returns:
-            List of found products.
-
-        Example:
-            >>> async with WildberriesScraper() as scraper:
-            ...     products = await scraper.search("iphone 15")
-            ...     print(f"Found {len(products)} products")
-        """
-        params = {
-            "ab_testing": "false",
-            "appType": "1",
-            "curr": "rub",
-            "dest": self._dest,
-            "page": page,
-            "query": query,
-            "resultset": "catalog",
-            "sort": sort,
-            "spp": "30",
-            "suppressSpellcheck": "false",
-        }
-
-        logger.info("Searching Wildberries: query='%s', page=%d", query, page)
-
+    async def search(self, query: str) -> list[dict]:
+        results: list[dict] = []
         try:
-            data = await self._make_request(self._search_api, params=params)
-        except WildberriesAPIError as e:
-            logger.error("Search failed: %s", e)
-            return []
-
-        products: list[ProductCreate] = []
-        items = data.get("data", {}).get("products", [])
-
-        for item in items:
-            try:
-                parsed = self._parse_api_product(item)
-                if parsed["price"] > 0:
-                    products.append(self._create_product(parsed))
-            except Exception as e:
-                logger.warning("Failed to parse product: %s", e)
-                continue
-
-        logger.info("Found %d products for query '%s'", len(products), query)
-        return products
-
-    async def get_product(self, product_id: str) -> ProductCreate | None:
-        """Get detailed product information.
-
-        Args:
-            product_id: Wildberries product ID (nm).
-
-        Returns:
-            Product data or None if not found.
-        """
-        params = {
-            "appType": "1",
-            "curr": "rub",
-            "dest": self._dest,
-            "nm": product_id,
-        }
-
-        logger.info("Fetching Wildberries product: %s", product_id)
-
-        try:
-            data = await self._make_request(self._card_api, params=params)
-        except WildberriesAPIError as e:
-            logger.error("Get product failed: %s", e)
-            return None
-
-        products = data.get("data", {}).get("products", [])
-        if not products:
-            logger.warning("Product not found: %s", product_id)
-            return None
-
-        item = products[0]
-        parsed = self._parse_api_product(item)
-
-        # Fetch additional details if available
-        try:
-            detail = await self._fetch_product_detail(int(product_id))
-            if detail:
-                parsed.update(detail)
-        except Exception as e:
-            logger.warning("Failed to fetch product detail: %s", e)
-
-        return self._create_product(parsed)
-
-    async def _fetch_product_detail(self, product_id: int) -> dict[str, Any] | None:
-        """Fetch additional product details.
-
-        Args:
-            product_id: Product ID.
-
-        Returns:
-            Additional product data or None.
-        """
-        vol = product_id // 100000
-        part = product_id // 1000
-        basket = self._get_basket_host(vol)
-
-        # Card detail JSON
-        detail_url = (
-            f"https://basket-{basket}.wbbasket.ru/"
-            f"vol{vol}/part{part}/{product_id}/info/ru/card.json"
-        )
-
-        try:
-            # Use shorter delay for CDN requests
-            await random_delay(0.5, 1.5)
-
-            async with httpx.AsyncClient(
-                timeout=httpx.Timeout(15.0),
-                headers=self._get_headers(),
-            ) as client:
-                response = await client.get(detail_url)
-                response.raise_for_status()
-                data = response.json()
-
-            result = {}
-
-            # Description
-            if "description" in data:
-                result["description"] = data["description"]
-
-            # Specifications
-            if "options" in data:
-                result["specs"] = {
-                    opt.get("name", ""): opt.get("value", "")
-                    for opt in data.get("options", [])
-                    if opt.get("name") and opt.get("value")
-                }
-
-            # Composition
-            if "compositions" in data:
-                compositions = data.get("compositions", [])
-                if compositions:
-                    result["composition"] = compositions[0].get("name", "")
-
-            return result
-
-        except Exception:
-            return None
-
-    async def get_category(
-        self,
-        category_url: str,
-        max_pages: int = 10,
-    ) -> AsyncGenerator[ProductCreate, None]:
-        """Iterate over products in a category.
-
-        Args:
-            category_url: URL of the category page.
-            max_pages: Maximum number of pages to scrape.
-
-        Yields:
-            Product data for each product.
-        """
-        import re
-
-        subject_match = re.search(r"subject[=:](\d+)", category_url)
-        if subject_match:
-            subject_id = subject_match.group(1)
-        else:
-            logger.warning(
-                "Could not extract subject ID from URL, using URL as search query"
-            )
-            path_parts = category_url.rstrip("/").split("/")
-            query = path_parts[-1].replace("-", " ")
-
-            async for product in self._search_pages(query, max_pages):
-                yield product
-            return
-
-        logger.info("Scraping Wildberries category: subject=%s", subject_id)
-
-        async for product in self._search_by_subject(subject_id, max_pages):
-            yield product
-
-    async def _search_by_subject(
-        self,
-        subject_id: str,
-        max_pages: int,
-    ) -> AsyncGenerator[ProductCreate, None]:
-        """Search products by subject (category) ID.
-
-        Args:
-            subject_id: WB subject ID.
-            max_pages: Maximum pages to fetch.
-
-        Yields:
-            Products in the category.
-        """
-        for page in range(1, max_pages + 1):
             params = {
-                "ab_testing": "false",
                 "appType": "1",
                 "curr": "rub",
-                "dest": self._dest,
-                "page": page,
-                "subject": subject_id,
+                "dest": "-1257786",
+                "lang": "ru",
+                "query": query,
                 "resultset": "catalog",
                 "sort": "popular",
                 "spp": "30",
+                "suppressSpellcheck": "false",
             }
 
-            try:
-                data = await self._make_request(self._search_api, params=params)
-            except WildberriesAPIError as e:
-                logger.error("Category page %d failed: %s", page, e)
-                break
+            data = await self._fetch_with_retry(params, query)
 
-            items = data.get("data", {}).get("products", [])
+            products = data.get("data", {}).get("products") or data.get("products") or []
 
-            if not items:
-                logger.info("No products on page %d, stopping", page)
-                break
-
-            for item in items:
+            for item in products:
                 try:
-                    parsed = self._parse_api_product(item)
-                    if parsed["price"] > 0:
-                        yield self._create_product(parsed)
-                except Exception as e:
-                    logger.warning("Failed to parse product: %s", e)
-                    continue
+                    product_id = item.get("id")
+                    if not product_id:
+                        continue
 
-            logger.info("Scraped page %d: %d products", page, len(items))
+                    product_id = int(product_id)
+                    name = (item.get("name") or "").strip()
+                    brand = (item.get("brand") or "").strip()
 
-    async def _search_pages(
-        self,
-        query: str,
-        max_pages: int,
-    ) -> AsyncGenerator[ProductCreate, None]:
-        """Search multiple pages.
+                    if not name:
+                        continue
 
-        Args:
-            query: Search query.
-            max_pages: Maximum pages.
+                    title = f"{brand} {name}".strip() if brand else name
 
-        Yields:
-            Products from search.
-        """
-        for page in range(1, max_pages + 1):
-            products = await self.search(query, page=page)
+                    if _is_accessory(title):
+                        continue
 
-            if not products:
-                break
+                    # Filter out-of-stock items
+                    # WB indicates stock via sizes[].stocks[] — if all sizes have
+                    # empty stocks arrays, item is not actually purchasable
+                    # (still shown in search with price, but clicking leads to OOS page)
+                    sizes = item.get("sizes") or []
+                    total_qty = item.get("totalQuantity", None)
+                    if total_qty is not None and total_qty == 0:
+                        continue
+                    if sizes:
+                        has_stock = False
+                        for sz in sizes:
+                            stocks = sz.get("stocks") or []
+                            if stocks:
+                                has_stock = True
+                                break
+                        if not has_stock:
+                            continue
 
-            for product in products:
-                yield product
+                    price_num = _extract_price(item)
+                    if price_num <= 0:
+                        continue
 
-    async def get_seller_info(self, seller_id: int) -> dict[str, Any] | None:
-        """Get seller information.
+                    rating = item.get("rating", 0)
+                    feedbacks = item.get("feedbacks", 0)
 
-        Args:
-            seller_id: Wildberries seller/supplier ID.
+                    specs = ""
+                    if rating:
+                        specs = f"★ {rating}"
+                        if feedbacks:
+                            specs += f" ({feedbacks} отзывов)"
 
-        Returns:
-            Seller data or None.
-        """
-        params = {"supplierId": seller_id}
+                    results.append(
+                        {
+                            "title": title,
+                            "price": _fmt_price(price_num),
+                            "price_num": price_num,
+                            "url": f"https://www.wildberries.ru/catalog/{product_id}/detail.aspx",
+                            "marketplace": "wildberries",
+                            "image": _build_image_url(product_id),
+                            "shop": brand or "Wildberries",
+                            "specs": specs,
+                            "category": "",
+                            "onliner_key": "",
+                        }
+                    )
+                except Exception as exc:
+                    logger.debug("wb_item_parse_skip", error=str(exc))
 
-        try:
-            data = await self._make_request(self._seller_api, params=params)
-            return {
-                "id": data.get("id"),
-                "name": data.get("name"),
-                "trade_mark": data.get("trademark"),
-                "legal_address": data.get("legalAddress"),
-                "ogrn": data.get("ogrn"),
-            }
         except Exception as e:
-            logger.warning("Failed to fetch seller info: %s", e)
-            return None
+            logger.error("wb_search_failed", error=str(e), query=query)
 
-    async def get_similar_products(
-        self,
-        product_id: str,
-        limit: int = 20,
-    ) -> list[ProductCreate]:
-        """Get similar products.
-
-        Args:
-            product_id: Product ID.
-            limit: Maximum number of similar products.
-
-        Returns:
-            List of similar products.
-        """
-        params = {
-            "appType": "1",
-            "curr": "rub",
-            "dest": self._dest,
-            "nm": product_id,
-        }
-
-        similar_api = "https://similar-products.wildberries.ru/api/v1/similar"
-
-        try:
-            data = await self._make_request(similar_api, params=params)
-        except WildberriesAPIError as e:
-            logger.warning("Similar products failed: %s", e)
-            return []
-
-        products: list[ProductCreate] = []
-        items = data.get("data", {}).get("products", [])[:limit]
-
-        for item in items:
-            try:
-                parsed = self._parse_api_product(item)
-                if parsed["price"] > 0:
-                    products.append(self._create_product(parsed))
-            except Exception as e:
-                logger.warning("Failed to parse similar product: %s", e)
-                continue
-
-        return products
+        return results
