@@ -19,6 +19,9 @@ wb_api.py
 # Playwright MCP scratch (logs, snapshots, ad-hoc screenshots)
 .playwright-mcp/
 
+# Diploma screenshots — артефакты регрессионника, хранятся локально (не в git, чтобы репо не пух)
+docs/diploma/screenshots/
+
 # Python
 __pycache__/
 *.pyc
@@ -36,7 +39,23 @@ node_modules/
 .DS_Store
 Thumbs.db
 
-# Env
+# Env (secrets — never commit)
 .env
+.env.*
 !.env.example
 !.env.local
+
+# DBs (local SQLite + history)
+*.db
+*.sqlite
+*.sqlite3
+
+# TS build cache
+*.tsbuildinfo
+
+# Next.js build output
+frontend/out/
+
+# Backups
+*.bak
+*.bak.*
