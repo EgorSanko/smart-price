@@ -111,31 +111,35 @@ class OnlinerScraper:
                 products = data.get("products", [])
 
                 for p in products[:max_results]:
-                    fn = p.get("full_name") or ""
-                    if not fn or _is_accessory(fn):
-                        continue
+                    try:
+                        fn = p.get("full_name") or ""
+                        if not fn or _is_accessory(fn):
+                            continue
 
-                    key = p.get("key", "")
-                    if not key:
-                        continue
+                        key = p.get("key", "")
+                        if not key:
+                            continue
 
-                    url = p.get("html_url", "")
-                    img = (p.get("images") or {}).get("header", "")
-                    specs = p.get("description", "")
-                    sch = p.get("schema") or {}
-                    cat = sch.get("name", "")
-                    catk = sch.get("key", "")
+                        url = p.get("html_url", "")
+                        img = (p.get("images") or {}).get("header", "")
+                        specs = p.get("description", "")
+                        sch = p.get("schema") or {}
+                        cat = sch.get("name", "")
+                        catk = sch.get("key", "")
 
-                    # Try to get shop positions (individual seller prices)
-                    shop_results = await self._fetch_shop_prices(
-                        client, key, fn, url, img, specs, cat, catk
-                    )
+                        # Try to get shop positions (individual seller prices)
+                        shop_results = await self._fetch_shop_prices(
+                            client, key, fn, url, img, specs, cat, catk
+                        )
 
-                    if shop_results:
-                        results.extend(shop_results)
-                    else:
-                        # Fallback: use min price from search results
-                        pr = p.get("prices", {})
+                        if shop_results:
+                            results.extend(shop_results)
+                            continue
+
+                        # Fallback: use min price from search results.
+                        # prices/price_min/offers can all be None for discontinued items —
+                        # must use `or {}` instead of dict default, otherwise .get() crashes.
+                        pr = p.get("prices") or {}
                         mn = float((pr.get("price_min") or {}).get("amount", 0))
                         if mn > 0:
                             cnt = (pr.get("offers") or {}).get("count", 0)
@@ -154,6 +158,14 @@ class OnlinerScraper:
                                     "onliner_key": key,
                                 }
                             )
+                    except Exception as item_err:
+                        # One bad item must not drop the whole page of results.
+                        logger.warning(
+                            "onliner_search_item_error",
+                            error=str(item_err),
+                            product_key=p.get("key") if isinstance(p, dict) else None,
+                        )
+                        continue
 
         except Exception as e:
             logger.error("onliner_search_error", error=str(e))
@@ -185,8 +197,9 @@ class OnlinerScraper:
                 return results
 
             data = r.json()
-            positions = data.get("positions", {}).get("primary", [])
-            shops = data.get("shops", {})
+            # Any of these can be None for out-of-stock products — use `or {}`.
+            positions = (data.get("positions") or {}).get("primary") or []
+            shops = data.get("shops") or {}
             seen_shops: set[str] = set()
 
             for pos in positions[:max_shops]:
@@ -195,13 +208,13 @@ class OnlinerScraper:
                     continue
                 seen_shops.add(sid)
 
-                pa = float(pos.get("position_price", {}).get("amount", 0))
+                pa = float((pos.get("position_price") or {}).get("amount", 0))
                 if pa <= 0:
                     continue
 
-                sh = shops.get(sid, {})
+                sh = shops.get(sid) or {}
                 sn = sh.get("title", "Магазин")
-                rt = sh.get("reviews", {}).get("rating", 0)
+                rt = (sh.get("reviews") or {}).get("rating", 0)
                 rs = f" ★{rt}" if rt else ""
                 w = pos.get("warranty", 0)
                 ws = f" • {w} мес." if w else ""
