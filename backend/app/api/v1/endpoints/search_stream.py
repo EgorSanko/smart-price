@@ -106,7 +106,10 @@ async def search_stream(
                 try:
                     products = await asyncio.wait_for(task, timeout=60)
                     # Stage 1: Fast regex filter (instant, free)
-                    products = cleanup.fast_filter(products, corrected_q)
+                    try:
+                        products = cleanup.fast_filter(products, corrected_q)
+                    except Exception as filter_err:
+                        logger.warning("fast_filter_error", source=key, error=str(filter_err))
                     all_products.extend(products)
                     yield _sse(
                         {
@@ -129,9 +132,13 @@ async def search_stream(
                         }
                     )
 
-            # Stage 2: AI filter on combined results (catches what regex missed)
+            # Stage 2: AI filter on combined results (catches what regex missed).
+            # Must not fail the stream — fall back to unfiltered results.
             if all_products:
-                all_products = await ai_filter_relevant(all_products, corrected_q)
+                try:
+                    all_products = await ai_filter_relevant(all_products, corrected_q)
+                except Exception as ai_err:
+                    logger.warning("ai_filter_error", error=str(ai_err))
 
             all_products.sort(key=lambda x: x.get("price_num", 0))
 
@@ -146,6 +153,17 @@ async def search_stream(
             for task in tasks.values():
                 task.cancel()
             raise
+        except Exception as stream_err:
+            # Any unhandled error inside the stream must still emit a terminal
+            # event — otherwise EventSource hangs forever on the client.
+            logger.error("sse_stream_error", query=q, error=str(stream_err))
+            yield _sse(
+                {
+                    "status": "complete",
+                    "total": len(all_products),
+                    "error": "stream_aborted",
+                }
+            )
 
     return StreamingResponse(
         event_stream(),
