@@ -14,6 +14,8 @@ const MP_META: Record<string, { label: string; color: string; badge: string }> =
   regard:      { label: 'Регард',         color: '#e53935', badge: 'mp-badge-regard' },
   aliexpress:  { label: 'AliExpress',     color: '#ff4747', badge: 'mp-badge-aliexpress' },
   worlddevices:{ label: 'World Devices',  color: '#2196f3', badge: 'mp-badge-worlddevices' },
+  oneclick:    { label: '1click',         color: '#0084ff', badge: 'mp-badge-oneclick' },
+  biggeek:     { label: 'BigGeek',        color: '#7b1fa2', badge: 'mp-badge-biggeek' },
 }
 
 interface Message extends ChatMessage {

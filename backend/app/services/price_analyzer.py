@@ -17,7 +17,9 @@ from app.schemas.analyze import (
     PriceStats,
 )
 from app.scrapers.ai_relevance_filter import ai_filter_relevant
+from app.scrapers.category_extractor import filter_by_category
 from app.scrapers.manager import ScrapingManager
+from app.scrapers.query_corrector import correct_query
 from app.services import cleanup
 
 
@@ -53,46 +55,116 @@ class PriceAnalyzer:
 
         logger.info("price_analyzer_start", query=query, region=region)
 
-        # ── 2. Start event ────────────────────────────────────────────
-        yield {"status": "start", "query": query, "region": region}
+        # ── 2a. Query understanding ──────────────────────────────────
+        # Normalize slang, fix typos, expand brand context BEFORE hitting
+        # scrapers. "сони телек" → "Sony телевизор"; "ipone 17 pra" →
+        # "iPhone 17 Pro". Failures degrade silently — correct_query()
+        # already catches its own exceptions and returns the raw query.
+        corrected_query, original_query = await correct_query(query)
+        effective_query = corrected_query
+        if original_query:
+            logger.info(
+                "price_analyzer_query_corrected",
+                original=original_query,
+                corrected=corrected_query,
+                region=region,
+            )
+
+        # ── 2b. Start event ───────────────────────────────────────────
+        yield {"status": "start", "query": effective_query, "region": region}
+        if original_query:
+            # Same event shape as live-search so the frontend can reuse one
+            # handler for both flows.
+            yield {
+                "status": "corrected",
+                "original": original_query,
+                "corrected": corrected_query,
+            }
 
         # ── 3. Scraping ───────────────────────────────────────────────
         manager = ScrapingManager()
         yield {"status": "parsing", "sources": list(_enabled_sources(region))}
 
-        logger.info("price_analyzer_scraping", query=query, region=region)
-        raw_results: dict[str, list[dict]] = await manager.search_all(query, region)
+        logger.info("price_analyzer_scraping", query=effective_query, region=region)
+        raw_results: dict[str, list[dict]] = await manager.search_all(effective_query, region)
 
         all_raw: list[dict] = []
         for products in raw_results.values():
             all_raw.extend(products)
 
         yield {"status": "scraped", "total": len(all_raw)}
-        logger.info("price_analyzer_scraped", query=query, region=region, total=len(all_raw))
+        logger.info(
+            "price_analyzer_scraped", query=effective_query, region=region, total=len(all_raw)
+        )
 
         # ── 4. Filter + clean ─────────────────────────────────────────
         # Stage 1: fast regex filter (cheap, removes obvious mismatches).
-        filtered = cleanup.fast_filter(all_raw, query)
+        # Uses the normalized query so brand/model/variant detection actually
+        # sees "Sony" instead of "сони", etc.
+        filtered = cleanup.fast_filter(all_raw, effective_query)
 
-        # Stage 2: AI relevance filter — same one used by live-search. Without
-        # it, analyze was returning things like "Xiaomi Smart Laser Measure"
-        # for a "Xiaomi Smart Projector" query. Failures degrade to unfiltered
-        # (function catches its own exceptions).
+        # Stage 2: price clustering — detect bimodal distributions and drop
+        # the low-price cluster when it clearly represents a different
+        # product type (PS5 ~50k vs PS5 games ~4k). Runs BEFORE the LLM
+        # filter so the LLM sees fewer products (cheaper, faster) and
+        # never has to judge clearly-wrong items on price alone.
+        filtered, cluster_meta = cleanup.cluster_filter_by_price(filtered)
+        logger.info(
+            "price_analyzer_cluster",
+            query=effective_query,
+            region=region,
+            **cluster_meta,
+        )
+
+        # Stage 3: Symmetric category filter. Classifies the query and each
+        # item into the same 14-bucket taxonomy (electronics_device,
+        # computer_component, accessory_cable, …) and keeps only items
+        # whose category matches the query's. This is the robust fix for
+        # shared-token leakage — e.g. "RTX 4090" (computer_component) vs
+        # "кабель для RTX 4090" (accessory_cable). See arxiv 2310.14820:
+        # category extraction beats relevance prompting because the item
+        # judgement is independent of the query string. Failures fall back
+        # to input.
         try:
-            filtered = await ai_filter_relevant(filtered, query)
+            filtered, cat_meta = await filter_by_category(filtered, effective_query)
+            logger.info(
+                "price_analyzer_category",
+                query=effective_query,
+                region=region,
+                **cat_meta,
+            )
+        except Exception as cat_err:
+            logger.warning(
+                "price_analyzer_category_error",
+                query=effective_query,
+                region=region,
+                error=str(cat_err),
+            )
+
+        # Stage 4: AI relevance filter — catches within-category mismatches
+        # the taxonomy is too coarse for (iPhone 14 vs 15, RTX 4080 vs 4090,
+        # Samsung S24 vs S25). Historically this was the only relevance
+        # stage; now it runs on a pre-filtered pool so its prompt only
+        # sees same-category candidates.
+        try:
+            filtered = await ai_filter_relevant(filtered, effective_query)
         except Exception as ai_err:
             logger.warning(
                 "price_analyzer_ai_filter_error",
-                query=query,
+                query=effective_query,
                 region=region,
                 error=str(ai_err),
             )
 
-        # Stage 3: price sanity — outliers and zero-priced items.
-        filtered = cleanup.remove_price_outliers(filtered)
+        # Stage 5: drop any zero-priced survivors.
         filtered = [p for p in filtered if (p.get("price_num") or 0) > 0]
 
-        logger.info("price_analyzer_filtered", query=query, region=region, count=len(filtered))
+        logger.info(
+            "price_analyzer_filtered",
+            query=effective_query,
+            region=region,
+            count=len(filtered),
+        )
 
         # ── 5. Minimum offers check ───────────────────────────────────
         if len(filtered) < _MIN_OFFERS:
@@ -101,7 +173,10 @@ class PriceAnalyzer:
                 f"(нужно минимум {_MIN_OFFERS}, нашли {len(filtered)})"
             )
             logger.warning(
-                "price_analyzer_not_enough", query=query, region=region, found=len(filtered)
+                "price_analyzer_not_enough",
+                query=effective_query,
+                region=region,
+                found=len(filtered),
             )
             yield {"status": "error", "message": msg}
             return
@@ -154,7 +229,7 @@ class PriceAnalyzer:
         yield {"status": "stats", "stats": stats.model_dump()}
         logger.info(
             "price_analyzer_stats_ready",
-            query=query,
+            query=effective_query,
             region=region,
             median=float(stat_median),
             count=stats.count,
@@ -164,7 +239,7 @@ class PriceAnalyzer:
         yield {"status": "analyzing"}
 
         llm_payload, llm_source = await self._call_llm(
-            query=query,
+            query=effective_query,
             region=region,
             currency=currency,
             stats=stats,
@@ -175,7 +250,7 @@ class PriceAnalyzer:
 
         # ── 11–12. Build final result (prices always from Python, not LLM) ───
         result = AnalyzeResult(
-            query=query,
+            query=effective_query,
             region=region,  # type: ignore[arg-type]
             currency=currency,
             verdict=llm_payload.verdict,
@@ -190,7 +265,7 @@ class PriceAnalyzer:
 
         logger.info(
             "price_analyzer_done",
-            query=query,
+            query=effective_query,
             region=region,
             verdict=result.verdict,
             score=result.score,

@@ -247,6 +247,7 @@ export interface AnalyzeResult {
 
 export type AnalyzeStreamEvent =
   | { status: 'start'; query: string; region: string }
+  | { status: 'corrected'; original: string; corrected: string }
   | { status: 'parsing'; sources?: string[]; source?: string }
   | { status: 'scraped'; total: number }
   | { status: 'stats'; stats: PriceStats }

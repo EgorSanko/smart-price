@@ -114,8 +114,13 @@ async def _ai_correct(query: str) -> str | None:
 
         result = response.choices[0].message.content.strip()
 
-        # Sanity checks
-        if not result or len(result) > len(query) * 3 or len(result) > 150:
+        # Sanity check: absolute length cap only. The previous ratio-based
+        # check (len(result) > len(query) * 3) silently killed legitimate
+        # expansions of short abbreviations — e.g. "пс5" (3 chars) → "PlayStation 5"
+        # (13 chars, ratio 4.3x, rejected) — forcing short slang queries to go
+        # to scrapers unchanged. 150 chars is enough to catch hallucinated
+        # rambling responses while allowing any reasonable brand expansion.
+        if not result or len(result) > 150:
             return None
 
         # Remove quotes if AI wrapped in them

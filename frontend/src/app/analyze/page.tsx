@@ -147,6 +147,7 @@ export default function AnalyzePage() {
   const [region, setRegion] = useState<'BY' | 'RU'>('RU')
   const [loading, setLoading] = useState(false)
   const [progress, setProgress] = useState<Progress>({ sources: [], total: 0, phase: '' })
+  const [correction, setCorrection] = useState<{ original: string; corrected: string } | null>(null)
   const [result, setResult] = useState<AnalyzeResult | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -159,12 +160,16 @@ export default function AnalyzePage() {
     setLoading(true)
     setResult(null)
     setError(null)
+    setCorrection(null)
     setProgress({ sources: [], total: 0, phase: 'start' })
 
     const cleanup = analyzePrice(
       q.trim(),
       r,
       (ev: AnalyzeStreamEvent) => {
+        if (ev.status === 'corrected') {
+          setCorrection({ original: ev.original, corrected: ev.corrected })
+        }
         if (ev.status === 'parsing') {
           const sources = ev.sources ?? (ev.source ? [ev.source] : [])
           setProgress(p => ({ ...p, sources, phase: 'parsing' }))
@@ -336,6 +341,20 @@ export default function AnalyzePage() {
       </section>
 
       <div className="container pb-10">
+        {/* Query correction notice */}
+        {correction && (
+          <div className="max-w-2xl mx-auto mb-4 animate-fadeIn">
+            <div className="card p-3 flex items-center gap-2 text-sm">
+              <Sparkles className="w-4 h-4 text-[var(--ac)] shrink-0" />
+              <span className="text-[var(--tm)]">Поняли как:</span>
+              <span className="font-medium text-[var(--t)]">«{correction.corrected}»</span>
+              <span className="text-[var(--tm)] text-xs ml-auto">
+                вы искали: «{correction.original}»
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Progress */}
         {loading && (
           <div className="max-w-2xl mx-auto mb-8 animate-fadeIn">

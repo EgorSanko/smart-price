@@ -26,6 +26,11 @@ _ALLOWED_HOSTS = {
     "images.citilink.ru",
     "world-devices.ru",
     "www.world-devices.ru",
+    "1click.ru",
+    "www.1click.ru",
+    "biggeek.ru",
+    "www.biggeek.ru",
+    "images.biggeek.ru",
 }
 
 _REFERERS = {
@@ -45,6 +50,11 @@ _REFERERS = {
     "images.citilink.ru": "https://www.citilink.ru/",
     "world-devices.ru": "https://world-devices.ru/",
     "www.world-devices.ru": "https://world-devices.ru/",
+    "1click.ru": "https://1click.ru/",
+    "www.1click.ru": "https://1click.ru/",
+    "biggeek.ru": "https://biggeek.ru/",
+    "www.biggeek.ru": "https://biggeek.ru/",
+    "images.biggeek.ru": "https://biggeek.ru/",
 }
 
 

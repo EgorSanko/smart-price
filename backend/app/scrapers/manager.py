@@ -71,6 +71,18 @@ def _register_default_parsers():
             "color": "#2196f3",
             "enabled": True,
         },
+        "oneclick": {
+            "name": "1click",
+            "region": "RU",
+            "color": "#0084ff",
+            "enabled": True,
+        },
+        "biggeek": {
+            "name": "BigGeek",
+            "region": "RU",
+            "color": "#7b1fa2",
+            "enabled": True,
+        },
     }
 
 
@@ -168,6 +180,16 @@ class ScrapingManager:
                 from app.scrapers.worlddevices_http import WorldDevicesHttpScraper
 
                 scraper = WorldDevicesHttpScraper()
+                return await scraper.search(query)
+            elif marketplace == "oneclick":
+                from app.scrapers.oneclick_http import OneclickHttpScraper
+
+                scraper = OneclickHttpScraper()
+                return await scraper.search(query)
+            elif marketplace == "biggeek":
+                from app.scrapers.biggeek_http import BigGeekHttpScraper
+
+                scraper = BigGeekHttpScraper()
                 return await scraper.search(query)
             else:
                 self.logger.warning("unknown_marketplace", marketplace=marketplace)

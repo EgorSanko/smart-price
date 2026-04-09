@@ -22,19 +22,57 @@ _FILTER_PROMPT = """You are a product relevance filter for a price comparison we
 
 USER QUERY: "{query}"
 
-Below is a list of products found by marketplace scrapers. Your job:
-Return ONLY the numbers of products that MATCH the user's query.
+Below is a list of products found by marketplace scrapers. Return ONLY the numbers
+of products that are THE SAME PRODUCT the user is looking for.
 
-Rules:
-- Match the EXACT product the user is looking for
-- "Samsung Galaxy S25 Ultra" → only S25 Ultra, NOT S25, S25 FE, S25+, S24, A25, cases, cables
-- "Cactus Moto Expert 100" (projector screen) → only projector screens by Cactus, NOT printer ink, cartridges
-- "Tuvio телевизор 55" → only Tuvio TVs ~55 inch, NOT remotes, brackets, boards, cables
-- "iPhone 17 Pro" → only iPhone 17 Pro, NOT iPhone 17, iPhone 16 Pro, cases, chargers
-- Accessories (cases, cables, chargers, mounts, brackets, screen protectors) are NOT the main product
-- Spare parts (boards, matrices, flex cables, power supplies) are NOT the main product
-- Fakes/clones at suspiciously low prices should be EXCLUDED
-- If NOTHING matches, return empty array []
+CORE PRINCIPLE — the product IS, not "goes with":
+A product is relevant ONLY if it is literally the thing named in the query.
+Anything that is used WITH, FOR, INSIDE, INSTEAD OF, or AS A REPLACEMENT FOR
+that thing is a DIFFERENT product and must be excluded, even if the title
+contains the exact query words.
+
+IMPORTANT — edition/trim variants of the SAME product are RELEVANT:
+If the query names a base product without specifying a variant (e.g. "PlayStation 5",
+"iPhone 15", "MacBook Air"), then ALL editions/trims of that base product are
+relevant: Slim, Pro, Digital Edition, Disc Edition, regional bundles, different
+storage/memory, different colors, with/without included extras. Do NOT reject
+these as "different variants". A "Sony PlayStation 5 Slim Digital Edition 1TB"
+IS a PlayStation 5. An "iPhone 15 128GB Blue" IS an iPhone 15. Variant rejection
+applies ONLY when the query ITSELF specifies a variant — then keep only that one.
+
+Exclude as a DIFFERENT product (non-exhaustive — apply the principle, not the list):
+- Content that runs on a device: games, films, music, software, subscriptions,
+  gift cards — these are NOT the device
+- Accessories and peripherals: cases, covers, cables, chargers, adapters,
+  mounts, brackets, stands, straps, bags, remotes, controllers (unless the
+  query IS a controller), styluses, screen protectors, films
+- Spare parts and components: boards, matrices, displays, flex cables,
+  batteries, power supplies, hinges, housings, fans, keyboards "for X",
+  "replacement for X"
+- Consumables for a device: ink, cartridges, toner, filters, bags, pods
+- Different model / generation: if the query specifies a specific generation
+  or numbered model (e.g. "iPhone 15" vs iPhone 14, "S25" vs S24, "RTX 4090"
+  vs 4080), reject items with a different one — close is not equal.
+  But see the edition/trim rule above: variants of the SAME generation
+  (Slim/Pro/Digital/storage tiers) stay unless the query names a specific one.
+- Different brand: if the query names a brand, reject other brands (even if
+  the title mentions the queried brand as a compatibility tag like "для Brand")
+
+Signal words in titles that usually mean "NOT the product itself":
+  для / for / к / под / совместим / compatible / replacement / запчасть /
+  чехол / кейс / case / cover / кабель / cable / адаптер / adapter /
+  кронштейн / mount / bracket / игра / game / подписка / subscription /
+  картридж / cartridge / пульт / remote / ремешок / strap
+
+Exception: if the query itself names one of these things (e.g. "чехол iPhone",
+"кабель USB-C", "картридж HP 305"), then that IS the product — keep it.
+
+Additional rules:
+- Refurbished / used / "восстановленный" / "б/у" / "витринный" — EXCLUDE
+- Suspiciously cheap clones / fakes — EXCLUDE
+- If NOTHING matches, return empty array []. An empty result is STRICTLY
+  BETTER than returning wrong products. Do not be lenient. Do not "try to
+  be helpful" by including near-matches.
 
 PRODUCTS:
 {products}
@@ -135,10 +173,27 @@ async def ai_filter_relevant(products: list[dict], query: str) -> list[dict]:
             indices=indices,
         )
 
-        # If AI filtered everything, return all (don't trust empty)
-        return filtered if filtered else products
+        # Safety net: if the LLM drops almost everything from a non-trivial
+        # input pool, it is overwhelmingly likely a prompt/temperature glitch
+        # (observed: same corrected query "PlayStation 5" → 24 kept on one
+        # call, 1 kept on the next). The upstream regex + price-cluster stages
+        # already removed the obvious junk, so a >=95% drop on a pool of ≥10
+        # items means the LLM disagreed with itself, not that 95% are junk.
+        # Degrade gracefully to the input so the user still sees something.
+        if len(products) >= 10 and len(filtered) <= max(1, len(products) // 20):
+            logger.warning(
+                "ai_filter_suspicious_drop",
+                query=query,
+                total=len(products),
+                kept=len(filtered),
+            )
+            return products
+
+        return filtered
 
     except Exception as e:
         logger.error("ai_filter_error", error=str(e), query=query)
-        # Fallback: return all products if AI fails
+        # Network / JSON error is NOT the same as "nothing matches" — fall
+        # back to the input so that live-search still shows something.
+        # The analyze path adds its own min-count check on top.
         return products

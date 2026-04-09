@@ -3,7 +3,7 @@
  */
 
 import type { Metadata } from 'next'
-import { Github, Mail, Linkedin, Code, Database, Brain, Zap } from 'lucide-react'
+import { Github, Mail, Code, Database, Brain, Zap } from 'lucide-react'
 
 export const metadata: Metadata = {
   title: 'О проекте',
@@ -114,14 +114,11 @@ export default function AboutPage() {
               <h3 className="text-xl font-semibold text-txt-primary mb-1">Егор</h3>
               <p className="text-txt-secondary mb-4">Студент • Full-stack разработчик</p>
               <div className="flex items-center justify-center sm:justify-start gap-4">
-                <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="text-txt-muted hover:text-accent-light transition-colors">
+                <a href="https://github.com/EgorSanko/smart-price" target="_blank" rel="noopener noreferrer" className="text-txt-muted hover:text-accent-light transition-colors">
                   <Github className="w-5 h-5" />
                 </a>
-                <a href="mailto:example@mail.ru" className="text-txt-muted hover:text-accent-light transition-colors">
+                <a href="mailto:egor3sanko22@mail.ru" className="text-txt-muted hover:text-accent-light transition-colors">
                   <Mail className="w-5 h-5" />
-                </a>
-                <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" className="text-txt-muted hover:text-accent-light transition-colors">
-                  <Linkedin className="w-5 h-5" />
                 </a>
               </div>
             </div>

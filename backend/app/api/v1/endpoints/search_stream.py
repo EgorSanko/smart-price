@@ -9,6 +9,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 
 from app.scrapers.ai_relevance_filter import ai_filter_relevant
+from app.scrapers.category_extractor import filter_by_category
 from app.scrapers.manager import get_parsers
 from app.scrapers.query_corrector import correct_query
 from app.services import cleanup
@@ -27,6 +28,8 @@ MP_DISPLAY = {
     "regard": "Регард",
     "aliexpress": "AliExpress",
     "worlddevices": "World Devices",
+    "oneclick": "1click",
+    "biggeek": "BigGeek",
 }
 
 
@@ -61,6 +64,14 @@ async def _scrape_one(marketplace: str, query: str) -> list[dict]:
             from app.scrapers.worlddevices_http import WorldDevicesHttpScraper
 
             return await WorldDevicesHttpScraper().search(query)
+        elif marketplace == "oneclick":
+            from app.scrapers.oneclick_http import OneclickHttpScraper
+
+            return await OneclickHttpScraper().search(query)
+        elif marketplace == "biggeek":
+            from app.scrapers.biggeek_http import BigGeekHttpScraper
+
+            return await BigGeekHttpScraper().search(query)
         else:
             return []
     except Exception as e:
@@ -132,8 +143,31 @@ async def search_stream(
                         }
                     )
 
-            # Stage 2: AI filter on combined results (catches what regex missed).
-            # Must not fail the stream — fall back to unfiltered results.
+            # Stage 2: price clustering on combined pool — drops cheap
+            # accessory/game clusters when the query is for an expensive
+            # device. Must run on the COMBINED list (per-source batches
+            # are too small to detect bimodality). Symmetric with analyze.
+            if all_products:
+                all_products, cluster_meta = cleanup.cluster_filter_by_price(all_products)
+                logger.info("live_search_cluster", query=corrected_q, **cluster_meta)
+
+            # Stage 3: Symmetric category filter. Drops wrong-category items
+            # the regex and cluster stages missed (e.g. cables/mounts that
+            # mention the queried component name, games that share the
+            # console name). Must run on the COMBINED pool — per-source
+            # batches leak context between marketplaces and titles repeat,
+            # so the in-memory cache inside filter_by_category shines at
+            # the combined-pool level. Symmetric with the analyze pipeline.
+            if all_products:
+                try:
+                    all_products, cat_meta = await filter_by_category(all_products, corrected_q)
+                    logger.info("live_search_category", query=corrected_q, **cat_meta)
+                except Exception as cat_err:
+                    logger.warning("category_filter_error", error=str(cat_err))
+
+            # Stage 4: AI filter as a second pass — handles within-category
+            # model/variant mismatches (iPhone 14 vs 15, S24 vs S25). Must
+            # not fail the stream.
             if all_products:
                 try:
                     all_products = await ai_filter_relevant(all_products, corrected_q)
@@ -142,10 +176,19 @@ async def search_stream(
 
             all_products.sort(key=lambda x: x.get("price_num", 0))
 
+            # Emit the FINAL combined-pool filtered list. Per-source `done`
+            # events only ran through fast_filter — they still contain cheap
+            # accessories/games the combined-pool stages later dropped. The
+            # frontend must replace its accumulated list with this one so
+            # the user sees the final, correct result. Without this the UI
+            # shows ghost products (e.g. PS5 games leaking through for a
+            # "PlayStation 5" query because Regard's per-source batch has
+            # no bimodality to cluster on).
             yield _sse(
                 {
                     "status": "complete",
                     "total": len(all_products),
+                    "products": all_products,
                 }
             )
         except asyncio.CancelledError:

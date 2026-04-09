@@ -14,6 +14,8 @@ const MP_META: Record<string, { label: string; color: string; badge: string }> =
   regard:      { label: 'Регард',         color: '#e53935', badge: 'mp-badge-regard' },
   aliexpress:  { label: 'AliExpress',     color: '#ff4747', badge: 'mp-badge-aliexpress' },
   worlddevices:{ label: 'World Devices',  color: '#2196f3', badge: 'mp-badge-worlddevices' },
+  oneclick:    { label: '1click',         color: '#0084ff', badge: 'mp-badge-oneclick' },
+  biggeek:     { label: 'BigGeek',        color: '#7b1fa2', badge: 'mp-badge-biggeek' },
 }
 
 type SortMode = 'price_asc' | 'price_desc'
@@ -83,6 +85,34 @@ function HomePageInner() {
           }
         } else if (event.status === 'complete') {
           const count = event.total || 0
+          // Replace the accumulated per-source list with the backend's
+          // final filtered list. Per-source `done` events only passed
+          // through the fast regex filter — cluster/category/AI filters
+          // run on the combined pool at the end and their verdict only
+          // arrives here. Without this replace, games/accessories leak
+          // into the UI for queries like "PlayStation 5".
+          if (event.products) {
+            setProducts(event.products)
+            // Recalculate per-source badge counts from the FINAL filtered
+            // list. Otherwise the sidebar keeps showing raw counts from
+            // the `done` events (pre cluster/category/AI), so the user
+            // sees "BigGeek 12" in the badge but can't find any BigGeek
+            // items in the scrollable list because all 12 were dropped
+            // by downstream filters. Keep `status: 'done'` for sources
+            // that reported in but now have 0 items, so they still show
+            // as "finished" (greyed out) rather than "loading".
+            const finalCounts: Record<string, number> = {}
+            for (const p of event.products) {
+              finalCounts[p.marketplace] = (finalCounts[p.marketplace] || 0) + 1
+            }
+            setMpStatus(prev => {
+              const next: typeof prev = {}
+              for (const key of Object.keys(prev)) {
+                next[key] = { ...prev[key], count: finalCounts[key] || 0 }
+              }
+              return next
+            })
+          }
           setStatusText(count > 0 ? `Найдено ${count} предложений` : 'Ничего не найдено')
           setIsLoading(false)
         } else if (event.status === 'error') {
