@@ -99,6 +99,19 @@ _ROUTES: list[tuple[tuple[str, ...], str]] = [
 # Queries containing these words are accessories/spare parts for devices.
 # BigGeek sells finished products, not spare parts — return None early.
 _ACCESSORY_SIGNALS = {
+    "чехол",
+    "кейс",
+    "case",
+    "cover",
+    "стекло",
+    "пленка",
+    "плёнка",
+    "ремешок",
+    "strap",
+    "кабель",
+    "провод",
+    "зарядк",
+    "адаптер",
     "щетка",
     "щётка",
     "фильтр",

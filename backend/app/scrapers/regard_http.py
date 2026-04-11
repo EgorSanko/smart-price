@@ -77,8 +77,9 @@ class RegardHttpScraper:
                 if not results:
                     results = self._parse_html(html)
 
-                # Filter accessories and limit
-                results = [p for p in results if not _is_accessory(p["title"])]
+                # Filter accessories — skip if the query itself is for an accessory
+                if not _is_accessory(query):
+                    results = [p for p in results if not _is_accessory(p["title"])]
                 results = results[:max_results]
 
                 if results:

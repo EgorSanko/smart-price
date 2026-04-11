@@ -90,8 +90,9 @@ class WorldDevicesHttpScraper:
                 html = r.text
                 results = self._parse_html(html)
 
-                # Filter accessories
-                results = [p for p in results if not _is_accessory(p["title"])]
+                # Filter accessories — but skip if the query itself IS for an accessory
+                if not _is_accessory(query):
+                    results = [p for p in results if not _is_accessory(p["title"])]
                 results = results[:max_results]
 
                 if results:

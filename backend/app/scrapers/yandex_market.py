@@ -96,7 +96,7 @@ def _extract_image(chunk: str) -> str:
     return ""
 
 
-def _parse_products_from_html(html: str) -> list[dict]:
+def _parse_products_from_html(html: str, *, query_is_accessory: bool = False) -> list[dict]:
     """Extract products from Yandex Market HTML using skuId anchors.
 
     Proven approach: find "skuId" in embedded JSON, grab ±1000 chars chunk,
@@ -136,7 +136,7 @@ def _parse_products_from_html(html: str) -> list[dict]:
         title = title_m.group(1)
         price_num = int(price_m.group(1))
 
-        if price_num < 1000 or _is_accessory(title):
+        if price_num < 1000 or (not query_is_accessory and _is_accessory(title)):
             continue
 
         seen.add(sku)
@@ -245,6 +245,7 @@ class YandexMarketScraper:
 
     async def search(self, query: str) -> list[dict]:
         results: list[dict] = []
+        _qia = _is_accessory(query)  # skip accessory filter when query IS accessory
         try:
             await asyncio.sleep(random.uniform(0.3, 1.2))
 
@@ -283,7 +284,7 @@ class YandexMarketScraper:
                 else:
                     if has_captcha:
                         logger.info("yandex_captcha_with_data", query=query, html_size=len(html))
-                    results = _parse_products_from_html(html)
+                    results = _parse_products_from_html(html, query_is_accessory=_qia)
                     if results:
                         logger.info("yandex_html_ok", query=query, count=len(results))
 
@@ -321,7 +322,7 @@ class YandexMarketScraper:
                 logger.warning("yandex_nodriver_still_captcha", query=query)
                 return []
 
-            results = _parse_products_from_html(source)
+            results = _parse_products_from_html(source, query_is_accessory=_is_accessory(query))
             if results:
                 logger.info("yandex_nodriver_ok", query=query, count=len(results))
             return results
