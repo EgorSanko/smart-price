@@ -72,26 +72,25 @@ class WorldDevicesHttpScraper:
         # OpenCart search breaks on very long queries (>~50 chars) —
         # keep only the first 6 significant words (drop prepositions/articles).
         search_q = self._trim_query(query)
+        skip_acc = _is_accessory(query)
         try:
             async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-                r = await client.get(
-                    "https://world-devices.ru/index.php",
-                    params={
-                        "route": "product/search",
-                        "search": search_q,
-                        "limit": "48",
-                    },
-                    headers=_HEADERS,
-                )
-                if r.status_code != 200:
-                    logger.warning("worlddevices_http_error", status=r.status_code)
-                    return results
+                results = await self._fetch(client, search_q)
 
-                html = r.text
-                results = self._parse_html(html)
+                # OpenCart full-text is picky: too many keywords → 0 results.
+                # Retry with progressively shorter queries until something hits.
+                if not results:
+                    words = search_q.split()
+                    for limit in (4, 3, 2):
+                        if len(words) <= limit:
+                            continue
+                        short_q = " ".join(words[:limit])
+                        results = await self._fetch(client, short_q)
+                        if results:
+                            break
 
-                # Filter accessories — but skip if the query itself IS for an accessory
-                if not _is_accessory(query):
+                # Filter accessories — skip if the query itself IS for an accessory
+                if not skip_acc:
                     results = [p for p in results if not _is_accessory(p["title"])]
                 results = results[:max_results]
 
@@ -104,6 +103,17 @@ class WorldDevicesHttpScraper:
             logger.error("worlddevices_failed", error=str(e), query=query)
 
         return results
+
+    async def _fetch(self, client: httpx.AsyncClient, search_q: str) -> list[dict]:
+        """Single search request to WD OpenCart."""
+        r = await client.get(
+            "https://world-devices.ru/index.php",
+            params={"route": "product/search", "search": search_q, "limit": "48"},
+            headers=_HEADERS,
+        )
+        if r.status_code != 200:
+            return []
+        return self._parse_html(r.text)
 
     def _parse_html(self, html: str) -> list[dict]:
         """Extract products from OpenCart product-layout blocks."""
