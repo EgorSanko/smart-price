@@ -96,8 +96,65 @@ _ROUTES: list[tuple[tuple[str, ...], str]] = [
 ]
 
 
+# Queries containing these words are accessories/spare parts for devices.
+# BigGeek sells finished products, not spare parts — return None early.
+_ACCESSORY_SIGNALS = {
+    "щетка",
+    "щётка",
+    "фильтр",
+    "мешок",
+    "запчаст",
+    "насадка",
+    "ролик",
+    "тряпка",
+    "салфетка",
+    "контейнер для пыли",
+    "аккумулятор для",
+    "батарея для",
+    "замена для",
+}
+
+# If the query mentions these product categories that BigGeek doesn't
+# carry (or carries under a different slug than generic brand pages),
+# don't route through the brand keyword to smartphones.
+_NON_PHONE_SIGNALS = {
+    "пылесос",
+    "vacuum",
+    "робот-пылесос",
+    "robot",
+    "увлажнитель",
+    "очиститель",
+    "кондиционер",
+    "стиральн",
+    "холодильник",
+    "микроволн",
+    "чайник",
+    "кофемашин",
+    "мультиварк",
+}
+
+
 def _pick_slug(query: str) -> str | None:
     q = query.lower().strip()
+
+    # Early exit: accessory/spare-part queries — BigGeek doesn't sell these
+    if any(sig in q for sig in _ACCESSORY_SIGNALS):
+        return None
+
+    # Early exit: appliance queries that would misroute through a brand
+    # keyword (e.g. "xiaomi пылесос" → cmartfony-xiaomi). BigGeek may
+    # have Dyson vacuums under their own slug, but that's already handled
+    # by the ("dyson",) route. Generic appliance queries for other brands
+    # should not land on smartphone pages.
+    if any(sig in q for sig in _NON_PHONE_SIGNALS):
+        # Allow through ONLY if a specific non-phone route matches first
+        for keywords, slug in _ROUTES:
+            if slug in ("dyson", "fitnes-braslety-xiaomi"):
+                for kw in keywords:
+                    if kw in q:
+                        return slug
+        return None
+
     for keywords, slug in _ROUTES:
         for kw in keywords:
             if kw in q:
