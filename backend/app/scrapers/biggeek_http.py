@@ -91,6 +91,13 @@ _ROUTES: list[tuple[tuple[str, ...], str]] = [
     # Audio / home
     (("наушник", "earbud", "headphone"), "besprovodnye-naushniki-i-garnitury"),
     (("dyson",), "dyson"),
+    # Action cameras
+    (("insta360", "insta 360"), "ekshn-kamery"),
+    (("gopro", "go pro"), "ekshn-kamery"),
+    (("экшн-камер", "экшн камер", "action cam"), "ekshn-kamery"),
+    # VR headsets
+    (("oculus", "meta quest", "quest 3", "quest 2"), "ochki-virtualnoj-realnosti2"),
+    (("vr шлем", "vr headset", "виртуальной реальности"), "ochki-virtualnoj-realnosti2"),
     # Generic fallback for "смартфон" queries
     (("смартфон", "phone", "телефон"), "smartfony"),
 ]
