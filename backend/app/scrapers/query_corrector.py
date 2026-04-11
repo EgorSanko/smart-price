@@ -56,7 +56,8 @@ Rules:
 - Do NOT change the meaning — if they want "iPhone 17 Pro", don't change to "iPhone 16 Pro"
 - Do NOT substitute one brand for another. Dreame ≠ Roborock, Redmi ≠ Xiaomi, Honor ≠ Huawei — they are SEPARATE brands even if related
 - Do NOT add a brand that is not in the query. Only add brand when the model name unambiguously identifies it (e.g. "s25" → Samsung, "airpods" → Apple). If unsure, leave as-is
-- Remove marketing fluff words (мощный, новый, лучший, оригинальный, etc.) — keep only the product name
+- Remove ONLY marketing adjectives (мощный, новый, лучший, оригинальный, премиум, etc.)
+- NEVER remove the product TYPE — чехол, кабель, щетка, фильтр, пленка, стекло, пульт, ремешок, наушники, колонка, пылесос, робот-пылесос, планшет, телевизор, etc. These define WHAT the user is looking for. "Чехол для Xiaomi Pad 5" is NOT "Xiaomi Pad 5"!
 - If the query is already correct, return it unchanged
 - Return ONLY the corrected query, nothing else — no quotes, no explanation
 
@@ -72,7 +73,10 @@ Examples:
 - "джибиэль колонка" → "JBL колонка"
 - "Samsung Galaxy S25 Ultra" → "Samsung Galaxy S25 Ultra"
 - "Мощный робот-пылесос Dreame BOT D9 MAX" → "Dreame Bot D9 Max"
-- "робот-пылесос roborock s8" → "Roborock S8"
+- "робот-пылесос roborock s8" → "Roborock S8 робот-пылесос"
+- "Защитный чехол Cover Case для Планшета Xiaomi Pad 5 Green" → "чехол Xiaomi Pad 5 Green"
+- "Основная щетка для Xiaomi Mijia LDS Vacuum" → "щетка Xiaomi Mijia LDS Vacuum"
+- "кабель зарядки для айфон" → "кабель зарядки для iPhone"
 """
 
 
