@@ -173,7 +173,21 @@ async def ai_filter_relevant(products: list[dict], query: str) -> list[dict]:
             indices=indices,
         )
 
-        # Safety net: if the LLM drops almost everything from a non-trivial
+        # Safety net 1: total wipeout — if AI returns [] on ANY non-empty
+        # pool, degrade to input. The upstream fast_filter + cluster +
+        # category stages already removed obvious junk; an empty AI verdict
+        # almost always means the model was too strict (e.g. rejecting
+        # "compatible with X" items when the user searched for "X brush").
+        # Showing something is always better than "ничего не найдено".
+        if len(products) >= 3 and len(filtered) == 0:
+            logger.warning(
+                "ai_filter_total_wipeout",
+                query=query,
+                total=len(products),
+            )
+            return products
+
+        # Safety net 2: if the LLM drops almost everything from a non-trivial
         # input pool, it is overwhelmingly likely a prompt/temperature glitch
         # (observed: same corrected query "PlayStation 5" → 24 kept on one
         # call, 1 kept on the next). The upstream regex + price-cluster stages

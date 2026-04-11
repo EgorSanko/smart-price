@@ -56,15 +56,29 @@ class WorldDevicesHttpScraper:
     region = "RU"
     currency = "RUB"
 
+    _STOP = {"для", "и", "с", "в", "на", "по", "от", "до", "из", "the", "for", "of", "with"}
+
+    @staticmethod
+    def _trim_query(query: str, max_words: int = 6) -> str:
+        """Shorten query for OpenCart which chokes on long searches."""
+        words = query.split()
+        significant = [w for w in words if w.lower() not in WorldDevicesHttpScraper._STOP]
+        if len(significant) <= max_words:
+            return " ".join(significant)
+        return " ".join(significant[:max_words])
+
     async def search(self, query: str, *, max_results: int = 15) -> list[dict]:
         results: list[dict] = []
+        # OpenCart search breaks on very long queries (>~50 chars) —
+        # keep only the first 6 significant words (drop prepositions/articles).
+        search_q = self._trim_query(query)
         try:
             async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
                 r = await client.get(
                     "https://world-devices.ru/index.php",
                     params={
                         "route": "product/search",
-                        "search": query,
+                        "search": search_q,
                         "limit": "48",
                     },
                     headers=_HEADERS,
