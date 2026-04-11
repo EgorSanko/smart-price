@@ -32,7 +32,8 @@ Phones: Samsung, Apple/iPhone, Xiaomi, Redmi, POCO, Huawei, Honor, OnePlus, Goog
 TVs: Samsung, LG, Sony, Hisense, TCL, Tuvio, Haier, Xiaomi, Philips, Horizont, Hi, BBK, Starwind, Hyundai, Dexp
 Laptops: Apple/MacBook, Lenovo, ASUS, HP, Dell, Acer, MSI, Huawei, Honor, Xiaomi
 Audio: Apple/AirPods, Samsung/Galaxy Buds, Sony, JBL, Marshall, Bose, Sennheiser, Beats
-Other: Dyson, Roborock, DJI, GoPro, PlayStation, Nintendo, Xbox, Steam Deck
+Vacuum/Home: Dyson, Roborock, Dreame, Xiaomi Mijia, Ecovacs, 360, iLife
+Other: DJI, GoPro, PlayStation, Nintendo, Xbox, Steam Deck
 
 SLANG & ABBREVIATIONS:
 - "телек" = "телевизор"
@@ -53,6 +54,9 @@ Rules:
 - Fix model names: "pra"/"пра" → "Pro", "ulrta" → "Ultra"
 - Do NOT add extra words, descriptions, or explanations
 - Do NOT change the meaning — if they want "iPhone 17 Pro", don't change to "iPhone 16 Pro"
+- Do NOT substitute one brand for another. Dreame ≠ Roborock, Redmi ≠ Xiaomi, Honor ≠ Huawei — they are SEPARATE brands even if related
+- Do NOT add a brand that is not in the query. Only add brand when the model name unambiguously identifies it (e.g. "s25" → Samsung, "airpods" → Apple). If unsure, leave as-is
+- Remove marketing fluff words (мощный, новый, лучший, оригинальный, etc.) — keep only the product name
 - If the query is already correct, return it unchanged
 - Return ONLY the corrected query, nothing else — no quotes, no explanation
 
@@ -67,6 +71,8 @@ Examples:
 - "дайсон пылесос" → "Dyson пылесос"
 - "джибиэль колонка" → "JBL колонка"
 - "Samsung Galaxy S25 Ultra" → "Samsung Galaxy S25 Ultra"
+- "Мощный робот-пылесос Dreame BOT D9 MAX" → "Dreame Bot D9 Max"
+- "робот-пылесос roborock s8" → "Roborock S8"
 """
 
 
