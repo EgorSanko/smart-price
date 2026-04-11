@@ -176,8 +176,6 @@ class WorldDevicesHttpScraper:
                 image = img_m.group(1).strip()
                 if image and not image.startswith("http"):
                     image = f"https://world-devices.ru{image}"
-                # Use larger cached size (600x600 is available)
-                image = re.sub(r"-\d+x\d+\.", "-600x600.", image)
 
             # Stock status
             stock = ""
