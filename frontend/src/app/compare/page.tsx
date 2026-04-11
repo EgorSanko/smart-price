@@ -103,8 +103,8 @@ export default function ComparePage() {
       (event: SearchStreamEvent) => {
         if (event.status === 'parsing') {
           setStatus(`Сканируем ${event.name || event.source}...`)
-        } else if (event.status === 'done' && event.products) {
-          setSearchResults(prev => [...prev, ...event.products!])
+        } else if (event.status === 'done') {
+          // Don't show raw unfiltered products — wait for complete
         } else if (event.status === 'complete') {
           if (event.products) {
             setSearchResults(event.products)

@@ -79,10 +79,6 @@ function HomePageInner() {
           setMpStatus(prev => ({ ...prev, [event.source!]: { ...prev[event.source!], status: 'loading' } }))
         } else if (event.status === 'done') {
           setMpStatus(prev => ({ ...prev, [event.source!]: { name: event.name || event.source!, count: event.count || 0, status: 'done' } }))
-          const newProducts = event.products
-          if (newProducts && newProducts.length > 0) {
-            setProducts(prev => [...prev, ...newProducts].sort((a, b) => a.price_num - b.price_num))
-          }
         } else if (event.status === 'complete') {
           const count = event.total || 0
           // Replace the accumulated per-source list with the backend's
