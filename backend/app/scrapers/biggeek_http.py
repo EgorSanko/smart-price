@@ -130,7 +130,27 @@ _ACCESSORY_SIGNALS = {
 # If the query mentions these product categories that BigGeek doesn't
 # carry (or carries under a different slug than generic brand pages),
 # don't route through the brand keyword to smartphones.
+# Generic brand keywords (e.g. "xiaomi", "samsung") that lead to
+# smartphone category pages. When one of these is the ONLY reason a
+# route matched, we should NOT use it if the query is clearly about a
+# non-phone product (TV, vacuum, etc.). Specific product routes (iPad,
+# Dyson, AirPods, consoles) are always allowed — only generic brand
+# fallbacks are gated.
+_GENERIC_BRAND_SLUGS = {
+    "cmartfony-xiaomi",
+    "smartfony-samsung",
+    "smartfony-serii-galaxy-s",
+    "smartfony-serii-galaxy-a",
+    "smartfony-serii-galaxy-z",
+    "smartfony",
+}
+
 _NON_PHONE_SIGNALS = {
+    "телевизор",
+    "tv ",
+    " tv",
+    "монитор",
+    "проектор",
     "пылесос",
     "vacuum",
     "робот-пылесос",
@@ -144,6 +164,22 @@ _NON_PHONE_SIGNALS = {
     "чайник",
     "кофемашин",
     "мультиварк",
+    "ноутбук",
+    "laptop",
+    "принтер",
+    "сканер",
+    "роутер",
+    "router",
+    "фотоаппарат",
+    "видеокамер",
+    "колонк",
+    "speaker",
+    "саундбар",
+    "soundbar",
+    "геймпад",
+    "gamepad",
+    "контроллер",
+    "джойстик",
 }
 
 
@@ -154,25 +190,28 @@ def _pick_slug(query: str) -> str | None:
     if any(sig in q for sig in _ACCESSORY_SIGNALS):
         return None
 
-    # Early exit: appliance queries that would misroute through a brand
-    # keyword (e.g. "xiaomi пылесос" → cmartfony-xiaomi). BigGeek may
-    # have Dyson vacuums under their own slug, but that's already handled
-    # by the ("dyson",) route. Generic appliance queries for other brands
-    # should not land on smartphone pages.
-    if any(sig in q for sig in _NON_PHONE_SIGNALS):
-        # Allow through ONLY if a specific non-phone route matches first
-        for keywords, slug in _ROUTES:
-            if slug in ("dyson", "fitnes-braslety-xiaomi"):
-                for kw in keywords:
-                    if kw in q:
-                        return slug
-        return None
-
+    # Try all routes — first match wins (order matters in _ROUTES)
+    matched_slug = None
     for keywords, slug in _ROUTES:
         for kw in keywords:
             if kw in q:
-                return slug
-    return None
+                matched_slug = slug
+                break
+        if matched_slug:
+            break
+
+    if not matched_slug:
+        return None
+
+    # If the matched slug leads to a generic smartphone page AND the query
+    # mentions a non-phone product category, reject the route. This prevents
+    # "xiaomi телевизор" from landing on cmartfony-xiaomi. Specific product
+    # routes (iPad, Dyson, consoles, AirPods, etc.) are always allowed.
+    if matched_slug in _GENERIC_BRAND_SLUGS:
+        if any(sig in q for sig in _NON_PHONE_SIGNALS):
+            return None
+
+    return matched_slug
 
 
 def _tokenize(query: str) -> list[str]:
