@@ -83,7 +83,8 @@ _ROUTES: list[tuple[tuple[str, ...], str]] = [
     (("galaxy a", "samsung a"), "smartfony-serii-galaxy-a"),
     (("galaxy z", "galaxy fold", "galaxy flip"), "smartfony-serii-galaxy-z"),
     (("samsung galaxy", "samsung", "самсунг"), "smartfony-samsung"),
-    # Xiaomi — note sitemap typo "cmartfony-xiaomi" is the live slug
+    # Xiaomi — wearables BEFORE generic xiaomi to avoid misrouting mi band → smartphones
+    (("mi band", "ми бэнд", "ми банд"), "fitnes-braslety-xiaomi"),
     (("xiaomi 15", "redmi", "xiaomi"), "cmartfony-xiaomi"),
     # Google Pixel
     (("pixel", "google pixel"), "smartfony"),
