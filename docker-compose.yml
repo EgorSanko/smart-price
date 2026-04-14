@@ -27,6 +27,32 @@ services:
     networks:
       - internal
 
+  # === CHEAPER WORKER (Yandex Alisa automation) ===
+  cheaper_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: sp_cheaper_worker
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-smartprice}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-smartprice}
+      - REDIS_URL=redis://redis:6379/0
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+      - SECRET_KEY=${SECRET_KEY}
+      - ALISA_STORAGE_STATE=/app/session/yandex_storage.json
+      - ALISA_HEADLESS=false
+    volumes:
+      - ./session:/app/session:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    command: ["xvfb-run", "-a", "--server-args=-screen 0 1440x900x24", "python", "-m", "app.workers.cheaper_runner"]
+
   # === POSTGRESQL ===
   postgres:
     image: postgres:16-alpine

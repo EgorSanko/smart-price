@@ -59,3 +59,6 @@ frontend/out/
 # Backups
 *.bak
 *.bak.*
+
+# Yandex Alisa session — NEVER commit
+session/

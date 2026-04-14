@@ -3,6 +3,7 @@
 from app.db.models.alert import PriceAlert, SearchHistory
 from app.db.models.category import Category
 from app.db.models.chat import ChatMessage, ChatSession
+from app.db.models.cheaper import CheaperSearch, CheaperStatus
 from app.db.models.marketplace import Marketplace
 from app.db.models.payment import Payment
 from app.db.models.price_history import PriceHistory
@@ -25,4 +26,6 @@ __all__ = [
     "ChatMessage",
     "Payment",
     "ScrapingJob",
+    "CheaperSearch",
+    "CheaperStatus",
 ]

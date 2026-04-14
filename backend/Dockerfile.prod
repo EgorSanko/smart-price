@@ -16,6 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libatspi2.0-0 libxcomposite1 libxdamage1 libxfixes3 \
     libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 \
     libwayland-client0 fonts-noto-color-emoji fonts-liberation \
+    # xvfb for running Chromium non-headless on a headless server (for cheaper_runner)
+    xvfb xauth \
     && rm -rf /var/lib/apt/lists/*
 
 # Python deps

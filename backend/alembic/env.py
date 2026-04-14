@@ -19,7 +19,7 @@ from app.db.base import Base
 config = context.config
 
 # Override sqlalchemy.url with value from settings
-config.set_main_option("sqlalchemy.url", settings.database_url.replace("+asyncpg", ""))
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("+asyncpg", ""))
 
 # Interpret the config file for Python logging
 if config.config_file_name is not None:
@@ -71,7 +71,7 @@ async def run_async_migrations() -> None:
     Creates an Engine and associates a connection with the context.
     """
     configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = settings.database_url
+    configuration["sqlalchemy.url"] = settings.DATABASE_URL
 
     connectable = async_engine_from_config(
         configuration,

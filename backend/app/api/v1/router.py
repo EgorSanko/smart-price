@@ -7,6 +7,7 @@ from app.api.v1.endpoints import (
     auth,
     catalog,
     chat,
+    cheaper,
     compare,
     health,
     image_proxy,
@@ -37,6 +38,7 @@ api_router.include_router(image_proxy.router)
 api_router.include_router(catalog.router)
 api_router.include_router(onliner_product.router)
 api_router.include_router(analyze.router)
+api_router.include_router(cheaper.router)
 
 # Future routers will be added here:
 # api_router.include_router(analytics.router)

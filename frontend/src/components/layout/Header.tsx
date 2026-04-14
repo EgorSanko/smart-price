@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Search, Scale, MessageCircle, Info, Menu, X, LayoutGrid, CreditCard, LogIn, User, LogOut, Crown, Sparkles } from 'lucide-react'
+import { Search, Scale, MessageCircle, Info, Menu, X, LayoutGrid, CreditCard, LogIn, User, LogOut, Crown, Sparkles, TrendingDown } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/lib/auth'
 
@@ -10,6 +10,7 @@ const navItems = [
   { href: '/', label: 'Поиск', icon: Search },
   { href: '/catalog', label: 'Каталог', icon: LayoutGrid },
   { href: '/compare', label: 'Сравнение', icon: Scale },
+  { href: '/cheaper', label: 'Найти дешевле', icon: TrendingDown },
   { href: '/analyze', label: 'Анализ цены', icon: Sparkles },
   { href: '/chat', label: 'AI Помощник', icon: MessageCircle },
 ]

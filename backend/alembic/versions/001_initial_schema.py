@@ -36,14 +36,14 @@ def upgrade() -> None:
     alert_type_enum = postgresql.ENUM(
         "below", "drop_percent", "any_change",
         name="alert_type_enum",
-        create_type=True,
+        create_type=False,
     )
     alert_type_enum.create(op.get_bind(), checkfirst=True)
 
     alert_status_enum = postgresql.ENUM(
         "active", "triggered", "expired", "paused",
         name="alert_status_enum",
-        create_type=True,
+        create_type=False,
     )
     alert_status_enum.create(op.get_bind(), checkfirst=True)
 
