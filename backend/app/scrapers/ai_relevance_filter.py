@@ -14,9 +14,54 @@ import structlog
 from openai import AsyncOpenAI
 
 from app.config import settings
+from app.scrapers.category_extractor import detect_intent_from_keywords
 
 
 logger = structlog.get_logger()
+
+
+# Categories where the user IS asking for the "for X" thing. Used to bias
+# the relevance prompt — without this hint Gemini ignores the exception
+# clause maybe 1 in 5 calls and drops every "чехол iPhone" item.
+_ACCESSORY_INTENT_CATS = {
+    "accessory_case",
+    "accessory_cable",
+    "accessory_mount",
+    "accessory_controller",
+    "spare_part",
+    "consumable",
+    "videogame",
+}
+
+_INTENT_HINT_TEMPLATE = """
+
+CRITICAL — INTENT HINT FOR THIS QUERY:
+The query "{query}" is asking for: {category}.
+This means items whose role is "{category}" are EXACTLY what the user wants.
+Do NOT exclude an item just because its title contains "{kw_hint}". That word
+is the QUERY ITSELF, not a disqualifier.
+
+Apply these rules instead:
+- KEEP items that are the {category} for the device named in the query
+  (model number, brand, generation must match).
+- REJECT items that are the device itself (the user wants the {category},
+  not the device).
+- REJECT cross-model items (e.g. a case for iPhone 14 when the query
+  names iPhone 16).
+- REJECT obvious junk, fakes, refurbished, used.
+"""
+
+
+_INTENT_KEYWORD_FOR_CATEGORY = {
+    "accessory_case": "чехол / кейс / case / cover / защитное стекло",
+    "accessory_cable": "кабель / зарядка / адаптер / провод / cable / charger",
+    "accessory_mount": "кронштейн / держатель / подставка / mount / bracket",
+    "accessory_controller": "геймпад / джойстик / пульт / controller / gamepad",
+    "spare_part": "аккумулятор / дисплей / шлейф / запчасть",
+    "consumable": "картридж / тонер / чернила / фильтр",
+    "videogame": "игра / диск / gift card",
+}
+
 
 _FILTER_PROMPT = """You are a product relevance filter for a price comparison website.
 
@@ -117,6 +162,17 @@ async def ai_filter_relevant(products: list[dict], query: str) -> list[dict]:
     products_text = "\n".join(product_lines)
 
     prompt = _FILTER_PROMPT.format(query=query, products=products_text)
+
+    # Inject explicit intent hint when the query unambiguously names an
+    # accessory / part / consumable / game. Without this Gemini sometimes
+    # ignores the exception clause inside _FILTER_PROMPT and rejects every
+    # "чехол ..." item even when the user wrote "чехол" themselves.
+    intent_cat = detect_intent_from_keywords(query)
+    if intent_cat in _ACCESSORY_INTENT_CATS:
+        kw_hint = _INTENT_KEYWORD_FOR_CATEGORY.get(intent_cat, intent_cat)
+        prompt = prompt + _INTENT_HINT_TEMPLATE.format(
+            query=query, category=intent_cat, kw_hint=kw_hint
+        )
 
     try:
         response = await client.chat.completions.create(

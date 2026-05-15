@@ -65,6 +65,21 @@ def _is_refurbished(title: str) -> bool:
     return any(kw in t for kw in REFURBISHED_KEYWORDS)
 
 
+def _should_drop_accessory(title: str, query_is_accessory: bool) -> bool:
+    """Drop accessory titles only when the query is for a real device.
+
+    When the user explicitly searches for an accessory ("чехол iPhone 16 Pro",
+    "кабель USB-C", "зарядка для AirPods"), the scraper used to apply the
+    same blanket accessory blacklist as for device queries — silently
+    erasing every legitimate result. This helper makes the filter
+    intent-aware: an accessory title only counts as "junk" when the user
+    asked for a device.
+    """
+    if query_is_accessory:
+        return False
+    return _is_accessory(title)
+
+
 def _fmt_price(price_num: float) -> str:
     if price_num <= 0:
         return ""
@@ -144,6 +159,7 @@ class YandexMarketPlaywright:
     async def search(self, query: str) -> list[dict]:
         results = []
         page = None
+        query_is_accessory = _is_accessory(query)
         try:
             browser = await _get_browser()
             page = await _new_page(browser)
@@ -169,14 +185,14 @@ class YandexMarketPlaywright:
 
             # Strategy 1: Extract from page source (JSON embedded in HTML)
             html = await page.content()
-            results = self._parse_from_html(html)
+            results = self._parse_from_html(html, query_is_accessory)
 
             if results:
                 logger.info("yandex_pw_html_ok", query=query, count=len(results))
                 return results
 
             # Strategy 2: Extract from DOM directly
-            results = await self._parse_from_dom(page)
+            results = await self._parse_from_dom(page, query_is_accessory)
 
             if results:
                 logger.info("yandex_pw_dom_ok", query=query, count=len(results))
@@ -190,8 +206,13 @@ class YandexMarketPlaywright:
 
         return results
 
-    def _parse_from_html(self, html: str) -> list[dict]:
-        """Extract products from embedded JSON in HTML (skuId-based)."""
+    def _parse_from_html(self, html: str, query_is_accessory: bool = False) -> list[dict]:
+        """Extract products from embedded JSON in HTML (skuId-based).
+
+        `query_is_accessory` — when True (e.g. user typed "чехол iPhone"),
+        do NOT drop titles whose role is "accessory"; those ARE what was
+        asked for. The refurbished filter still runs unconditionally.
+        """
         results = []
         seen = set()
 
@@ -220,7 +241,9 @@ class YandexMarketPlaywright:
             title = title_m.group(1)
             price_num = int(price_m.group(1))
 
-            if price_num < 100 or (_is_accessory(title) or _is_refurbished(title)):
+            if price_num < 100:
+                continue
+            if _should_drop_accessory(title, query_is_accessory) or _is_refurbished(title):
                 continue
 
             seen.add(sku)
@@ -259,7 +282,7 @@ class YandexMarketPlaywright:
 
         return results
 
-    async def _parse_from_dom(self, page) -> list[dict]:
+    async def _parse_from_dom(self, page, query_is_accessory: bool = False) -> list[dict]:
         """Fallback: extract products directly from DOM elements."""
         results = []
         try:
@@ -302,7 +325,9 @@ class YandexMarketPlaywright:
             for item in items:
                 if not item.get("title") or not item.get("price_num"):
                     continue
-                if _is_accessory(item["title"]) or _is_refurbished(item["title"]):
+                if _should_drop_accessory(item["title"], query_is_accessory) or _is_refurbished(
+                    item["title"]
+                ):
                     continue
                 results.append(
                     {

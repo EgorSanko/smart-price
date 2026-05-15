@@ -55,6 +55,144 @@ CATEGORIES: tuple[str, ...] = (
 
 _CATEGORY_SET = set(CATEGORIES)
 
+
+# ---------------------------------------------------------------------------
+# Deterministic intent detection — fast path before the LLM call.
+#
+# When the query CONTAINS an accessory/part/consumable keyword as a whole
+# token, we know the user is asking for that kind of thing — no need to
+# pay an LLM round-trip and risk Gemini misclassifying it as a device.
+#
+# The patterns match only at word boundaries on the query (not on item
+# titles). Order matters only within a category — first match wins inside
+# the category, but every keyword in one category is treated equally.
+#
+# Word boundary is `(?:^|\W)` / `(?:\W|$)` instead of `\b` because `\b` in
+# Python's `re` doesn't treat Cyrillic well — `\b` looks for a transition
+# between [a-zA-Z0-9_] and the rest, which means "чехол" inside "чехлы"
+# would not be considered separately. We want stemming, so we accept any
+# trailing Cyrillic suffix.
+# ---------------------------------------------------------------------------
+_W = r"(?:^|[\s\-\.,;:!?\(\)\[\]/\"'«»])"  # left boundary
+# Right boundary is implicit by allowing a word stem (the patterns end
+# with optional Cyrillic/Latin chars).
+
+_INTENT_PATTERNS: dict[str, tuple[str, ...]] = {
+    "accessory_case": (
+        # Russian "чехол" loses the «о» in oblique forms (чехла, чехлы,
+        # чехлами, чехлов). Stem on "чехл" with optional "о" between the
+        # «х» and «л» catches both nominative "чехол" and all declined
+        # forms in one pattern.
+        rf"{_W}чех[ол]?л",
+        rf"{_W}кейс",
+        rf"{_W}бампер",
+        rf"{_W}накладк",
+        rf"{_W}case\b",
+        rf"{_W}cover\b",
+        rf"{_W}sleeve\b",
+        rf"{_W}skin\b",
+        rf"{_W}защитн\w*\s+стекл",
+        rf"{_W}стекло\s+защитн",
+        rf"{_W}защитн\w*\s+плёнк",
+        rf"{_W}защитн\w*\s+пленк",
+        rf"{_W}плёнк\w*\s+для",
+        rf"{_W}пленк\w*\s+для",
+        rf"{_W}гидрогел",
+        rf"{_W}наклейк",
+    ),
+    "accessory_cable": (
+        rf"{_W}кабел",
+        rf"{_W}провод\s+для",
+        rf"{_W}зарядк",  # зарядка, зарядку
+        rf"{_W}зарядн\w*\s+(устройств|кабел|блок)",
+        rf"{_W}зарядное\s+устройств",
+        rf"{_W}переходник",
+        rf"{_W}адаптер",  # адаптер, адаптеры
+        rf"{_W}блок\s+питани",
+        rf"{_W}dock\b",
+        rf"{_W}docking\b",
+        rf"{_W}charger\b",
+        rf"{_W}cable\b",
+    ),
+    "accessory_mount": (
+        rf"{_W}кронштейн",
+        rf"{_W}подставк",
+        rf"{_W}держател\w*\s+для",
+        rf"{_W}креплени",
+        rf"{_W}штатив",
+        rf"{_W}mount\b",
+        rf"{_W}bracket\b",
+        rf"{_W}stand\b",
+        rf"{_W}tripod\b",
+    ),
+    "accessory_controller": (
+        rf"{_W}геймпад",
+        rf"{_W}джойстик",
+        rf"{_W}контроллер",
+        rf"{_W}пульт",
+        rf"{_W}стилус",
+        rf"{_W}gamepad\b",
+        rf"{_W}controller\b",
+        rf"{_W}joystick\b",
+        rf"{_W}stylus\b",
+        rf"{_W}remote\b",
+    ),
+    "spare_part": (
+        rf"{_W}аккумулятор\s+(для|на|к)\b",
+        rf"{_W}батаре\w*\s+(для|на)\b",
+        rf"{_W}акб\s+(для|на)",
+        rf"{_W}дисплей\s+для",
+        rf"{_W}матриц\w*\s+для",
+        rf"{_W}экран\s+для",
+        rf"{_W}тачскрин",
+        rf"{_W}шлейф\b",
+        rf"{_W}корпус\s+для",
+        rf"{_W}задн\w*\s+крышк",
+        rf"{_W}запчаст",
+    ),
+    "videogame": (
+        rf"^игра\s",
+        rf"{_W}диск\s+с\s+игр",
+        rf"{_W}game\s+(disc|disk|card)\b",
+        rf"{_W}gift\s+card\b",
+        rf"{_W}подарочн\w*\s+карт",
+    ),
+    "consumable": (
+        rf"{_W}картридж",
+        rf"{_W}тонер",
+        rf"{_W}чернил",
+        rf"{_W}мешок\s+для",
+        rf"{_W}мешк\w*\s+для",
+        rf"{_W}фильтр\s+для",
+        rf"{_W}сменн\w*\s+фильтр",
+        rf"{_W}hepa\s+для",
+    ),
+}
+
+
+def detect_intent_from_keywords(query: str) -> str | None:
+    """Determine query category from keywords alone, without an LLM call.
+
+    Returns a canonical category if the query unambiguously names an
+    accessory / spare part / consumable / game. Returns None when the
+    query has no such marker — caller should fall back to LLM
+    classification (or treat as device by default).
+
+    Note: a query that *combines* an accessory keyword with a device name
+    (e.g. "чехол iPhone 16 Pro") still gets the accessory category. The
+    device name is shared between accessory and device queries, so it
+    cannot disambiguate — the accessory keyword is the decisive token.
+    """
+    if not query:
+        return None
+    q = " " + query.lower() + " "  # padding helps left-boundary matches
+    for category, patterns in _INTENT_PATTERNS.items():
+        for pat in patterns:
+            if re.search(pat, q, flags=re.IGNORECASE | re.UNICODE):
+                return category
+    return None
+
+
 # In-memory cache for item titles. Titles repeat across marketplaces
 # (Onliner and Yandex both list the same "Sony PlayStation 5 Slim 1TB
 # Digital" SKU), so a process-local dict cuts LLM calls by ~30-50%
@@ -123,7 +261,21 @@ Rules:
 
 
 async def classify_query(query: str) -> str | None:
-    """Classify a search query into one canonical category. None on failure."""
+    """Classify a search query into one canonical category. None on failure.
+
+    Fast path: if the query contains an unambiguous accessory / part /
+    consumable keyword (e.g. "чехол", "кабель для", "картридж"), we
+    decide the category deterministically and skip the LLM. This makes
+    the result reproducible across runs and removes a class of bugs
+    where Gemini 2.5 Flash occasionally returns `electronics_device`
+    for "чехол iPhone 16 Pro" — which then triggered the device-only
+    negative-keyword list and silently dropped every case from the pool.
+    """
+    keyword_cat = detect_intent_from_keywords(query)
+    if keyword_cat is not None:
+        logger.info("category_query_keyword_hit", query=query, category=keyword_cat)
+        return keyword_cat
+
     client = _get_client()
     if not client:
         return None

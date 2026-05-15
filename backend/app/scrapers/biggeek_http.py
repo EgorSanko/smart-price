@@ -193,9 +193,27 @@ _NON_PHONE_SIGNALS = {
 def _pick_slug(query: str) -> str | None:
     q = query.lower().strip()
 
-    # Early exit: accessory/spare-part queries — BigGeek doesn't sell these
-    if any(sig in q for sig in _ACCESSORY_SIGNALS):
-        return None
+    # Accessory queries — BigGeek does sell some accessories (cases for
+    # iPhone, straps for Apple Watch), but they sit on per-device pages
+    # rather than a dedicated accessory category. Strategy: strip the
+    # accessory keyword and let routing pick the device page; the
+    # downstream relevance filter will then keep accessories whose title
+    # matches the device. If after stripping we still have nothing
+    # meaningful, fall back to None.
+    has_accessory_signal = any(sig in q for sig in _ACCESSORY_SIGNALS)
+    if has_accessory_signal:
+        # Strip accessory tokens to expose the device portion of the
+        # query for routing. Replace word-anchored matches only.
+        stripped = q
+        for sig in _ACCESSORY_SIGNALS:
+            stripped = re.sub(rf"\b{re.escape(sig)}\w*\b", " ", stripped)
+        stripped = re.sub(r"\s+", " ", stripped).strip()
+        if not stripped or len(stripped) < 3:
+            # The query was JUST an accessory word ("чехол", "кабель")
+            # without a device — we can't route. Other marketplaces will
+            # handle generic accessory queries.
+            return None
+        q = stripped
 
     # Try all routes — first match wins (order matters in _ROUTES)
     matched_slug = None
