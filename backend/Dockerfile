@@ -23,11 +23,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Python dependencies
 # Note: торч и sentence-transformers больше не нужны — app/ml удалён.
 # Раньше здесь была явная установка torch CPU-only, чтобы избежать
-# подтягивания CUDA-версии транзитивно. Теперь чистая сборка только
-# основных зависимостей из pyproject.toml.
+# подтягивания CUDA-версии транзитивно. Теперь только основные
+# зависимости + [scraping] для playwright/scrapling/firecrawl.
 COPY pyproject.toml README.md ./
 RUN pip install --upgrade pip && \
-    pip wheel --no-cache-dir --wheel-dir /build/wheels -e .
+    pip wheel --no-cache-dir --wheel-dir /build/wheels -e ".[scraping]"
 
 # ============================================
 # Stage 2: Runtime
