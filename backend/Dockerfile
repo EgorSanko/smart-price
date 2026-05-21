@@ -21,9 +21,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
+# Note: торч и sentence-transformers больше не нужны — app/ml удалён.
+# Раньше здесь была явная установка torch CPU-only, чтобы избежать
+# подтягивания CUDA-версии транзитивно. Теперь чистая сборка только
+# основных зависимостей из pyproject.toml.
 COPY pyproject.toml README.md ./
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && pip wheel --no-cache-dir --wheel-dir /build/wheels -e .
+    pip wheel --no-cache-dir --wheel-dir /build/wheels -e .
 
 # ============================================
 # Stage 2: Runtime
