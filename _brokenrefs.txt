@@ -1,0 +1,3 @@
+glued=False missingNum=True spBeforeDot=False :: ...' содержит 97 страниц, 18 рисунков, 23'
+glued=False missingNum=True spBeforeDot=False :: ...'страниц, 18 рисунков, 23 таблицы, 25'
+glued=False missingNum=True spBeforeDot=False :: ...' Smart Price приведено в таблице .'

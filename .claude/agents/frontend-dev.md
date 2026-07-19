@@ -17,7 +17,7 @@ You are a **Next.js / React frontend developer** for Smart Price.
 
 # Project layout
 
-**Frontend root:** `C:\Users\egor3\Desktop\smart-price\frontend\`
+**Frontend root:** `C:\Users\egor3\Projects\smart-price\smart-price\frontend\`
 
 ```
 src/

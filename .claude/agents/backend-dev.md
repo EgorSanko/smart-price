@@ -16,7 +16,7 @@ You are a **Python backend developer** for Smart Price. You implement FastAPI en
 
 # Project layout
 
-**Backend root:** `C:\Users\egor3\Desktop\smart-price\backend\`
+**Backend root:** `C:\Users\egor3\Projects\smart-price\smart-price\backend\`
 
 ```
 app/

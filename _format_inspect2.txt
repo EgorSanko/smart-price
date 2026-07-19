@@ -1,0 +1,50 @@
+=== HYPERLINKS (w:hyperlink elements) ===
+Total w:hyperlink elements: 0
+
+=== REFERENCES SAMPLE (after СПИСОК ИСПОЛЬЗОВАННЫХ) ===
+  PARA: 'ПРИЛОЖЕНИЕ А — Структура каталогов проекта ........................ 96'
+      run underline=None color=None text='ПРИЛОЖЕНИЕ А — Структура катал'
+  PARA: 'ПРИЛОЖЕНИЕ Б — Примеры ответов API ............................... 101'
+      run underline=None color=None text='ПРИЛОЖЕНИЕ Б — Примеры ответов'
+  PARA: 'ВВЕДЕНИЕ'
+      run underline=None color=None text='ВВЕДЕНИЕ'
+  PARA: 'Стремительное развитие электронной коммерции в последние годы кардинально изменило модель '
+      run underline=None color=None text='Стремительное развитие электро'
+      run underline=None color=None text='ило модель потребительского по'
+      run underline=None color=None text='В Республике Беларусь наблюдае'
+      run underline=None color=None text='оммерции в России превысит 15 '
+      run underline=None color=None text='зических магазинов всё в больш'
+  PARA: 'Параллельно с ростом рынка происходит усложнение его структуры. На территории двух стран ф'
+      run underline=None color=None text='Параллельно с ростом рынка про'
+      run underline=None color=None text='n и Яндекс Маркет в России, On'
+      run underline=None color=None text='азывается в ситуации информаци'
+      run underline=None color=None text=' возрастает пропорционально ко'
+      run underline=None color=None text='бытовой техники, где абсолютна'
+      run underline=None color=None text='ей.'
+  PARA: 'Ситуацию усугубляет практика динамического ценообразования, широко применяемая современным'
+      run underline=None color=None text='Ситуацию усугубляет практика д'
+      run underline=None color=None text='ных факторов. Алгоритмы ценооб'
+      run underline=None color=None text='зные покупатели видят различны'
+      run underline=None color=None text='учесть различия в наименования'
+      run underline=None color=None text='дложение.'
+
+=== BODY (non-heading) paragraphs with bold runs: 6 ===
+  'на тему: «Разработка AI-powered системы метапоиска'
+  'Б.1 Аутентификация'
+  'Б.2 Поиск товаров'
+  'Б.3 AI-ассистент'
+  'Б.4 Товары и история цен'
+  'Б.5 Прочие эндпоинты'
+
+=== TABLES: 23 ===
+  Table 0: 5 rows x 6 cols
+  Table 1: 9 rows x 5 cols
+  Table 2: 6 rows x 4 cols
+  Table 3: 7 rows x 4 cols
+  Table 4: 7 rows x 4 cols
+
+=== LISTING CAPTIONS ===
+
+=== FIGURE/TABLE CAPTIONS (count) ===
+  Рисунок-captions: 18
+  Таблица-captions: 24

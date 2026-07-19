@@ -1,0 +1,37 @@
+=== BODY PARAGRAPH SPACING (after ВВЕДЕНИЕ) ===
+  first_indent=None space_before=None space_after=None line_spacing=None align=None
+    'Стремительное развитие электронной коммерции в последние год'
+  first_indent=None space_before=None space_after=None line_spacing=None align=None
+    'Параллельно с ростом рынка происходит усложнение его структу'
+  first_indent=None space_before=None space_after=None line_spacing=None align=None
+    'Ситуацию усугубляет практика динамического ценообразования, '
+  first_indent=None space_before=None space_after=None line_spacing=None align=None
+    'Дополнительным фактором, повышающим актуальность исследовани'
+  first_indent=None space_before=None space_after=None line_spacing=None align=None
+    'Развитие технологий искусственного интеллекта и больших язык'
+  first_indent=None space_before=None space_after=None line_spacing=None align=None
+    'Анализ существующих решений в области сравнения цен — Google'
+
+=== CHAPTER PAGE-BREAK (level-1 headings) ===
+  [32] page_break_before=None text='1 АНАЛИЗ ПРЕДМЕТНОЙ ОБЛАСТИ И СУЩЕСТВУЮЩИХ РЕШЕНИЙ'
+  [37] page_break_before=None text='2 ПРОЕКТИРОВАНИЕ СИСТЕМЫ МЕТАПОИСКА ..............'
+  [47] page_break_before=None text='3 РЕАЛИЗАЦИЯ СИСТЕМЫ МЕТАПОИСКА ..................'
+  [62] page_break_before=None text='4 ТЕСТИРОВАНИЕ И АНАЛИЗ РЕЗУЛЬТАТОВ ..............'
+  [103] page_break_before=None text='1 АНАЛИЗ ПРЕДМЕТНОЙ ОБЛАСТИ И СУЩЕСТВУЮЩИХ РЕШЕНИЙ'
+  [183] page_break_before=None text='2 ПРОЕКТИРОВАНИЕ СИСТЕМЫ МЕТАПОИСКА'
+  [295] page_break_before=None text='3 РЕАЛИЗАЦИЯ СИСТЕМЫ МЕТАПОИСКА'
+  [430] page_break_before=None text='4 ТЕСТИРОВАНИЕ И АНАЛИЗ РЕЗУЛЬТАТОВ'
+
+=== РЕФЕРАТ length ===
+  Paragraphs: 6, chars: 2055, approx lines (90ch): 22
+  --- abstract text ---
+  | Выпускная квалификационная работа содержит 100 страниц, 18 рисунков, 23 таблицы, 25 использованных источников, 2 приложения.
+  | Ключевые слова: МЕТАПОИСК, ПАРСИНГ, МАРКЕТПЛЕЙС, ИСКУССТВЕННЫЙ ИНТЕЛЛЕКТ, СРАВНЕНИЕ ЦЕН, СКРАПИНГ, ВЕБ-ПРИЛОЖЕНИЕ, FASTAPI, NEXT.JS, GEMINI, OPENROUTER, SSE, ПОТОКОВАЯ ПЕРЕДАЧА ДАННЫХ, ИСТОРИЯ ЦЕН, АГРЕГАТОР ЦЕН, ЭЛЕКТРОННАЯ КОММЕРЦИЯ, DOCKER, POSTGRESQL, АНТИБОТ-ЗАЩИТА.
+  | Целью данной работы является проектирование и разработка веб-платформы метапоиска товаров на маркетплейсах Беларуси и России с AI-анализом цен, обеспечивающей единый интерфейс для поиска, сравнения и мониторинга цен с интеллектуальными рекомендациями на базе большой языковой модели Gemini 2.0 Flash от компании Google (через прокси-сервис OpenRouter). Система объединяет пять маркетплейсов двух стран в единый поисковый интерфейс с потоковым отображением результатов через технологию Server-Sent Events.
+  | Методы исследования: системный анализ, объектно-ориентированное проектирование, методы веб-скрапинга и обхода антибот-защиты, технологии потоковой передачи данных в реальном времени, методы обработки естественного языка с использованием больших языковых моделей, экспериментальное тестирование и профилирование производительности, методы статистического анализа данных о ценах.
+  | Основные результаты: разработана и развёрнута в промышленную эксплуатацию система метапоиска Smart Price, объединяющая пять маркетплейсов двух стран (Onliner.by, Яндекс Маркет, Регард, World Devices, 1click, BigGeek) в единый интерфейс с потоковым отображением результатов в реальном времени и AI-ассистентом для консультаций пользователей и подсистемой автоматического AI-анализа цен с формированием вердикта о выгодности предложения. Реализована гибридная система фильтрации результатов (Stage 1: regex + Stage 2: AI) и AI-коррекция поисковых запросов через модель Gemini 2.0 Flash.
+  | Область применения: электронная коммерция, системы поддержки принятия решений потребителей, агрегация и мониторинг цен на товары массового спроса, кроссрегиональная аналитика ценовых предложений.
+
+=== LATIN TOKEN PREVALENCE ===
+  Paragraphs containing Latin tokens (>=2ch): 337
+  Sample tokens: ['AI', 'AI-powered', 'API', 'Anthropic', 'App', 'BigGeek', 'CAPTCHA', 'Claude', 'Compose', 'DOCKER', 'DevOps', 'Devices', 'Docker', 'Events', 'FASTAPI', 'FMCG', 'FastAPI', 'Flash', 'GEMINI', 'GMV', 'Gemini', 'Google', 'Gross', 'HTML', 'Idealo', 'JSON', 'Listing', 'Merchandise', 'NEXT.JS', 'Next.js', 'OPENROUTER', 'Onliner', 'Onliner.by', 'OpenRouter', 'Ozon', 'POSTGRESQL', 'PostgreSQL', 'Price', 'PriceRunner', 'Product', 'Router', 'SQLAlchemy', 'SSE', 'Server-Sent', 'Shopping', 'Smart', 'Stage', 'TLS', 'Value', 'Wildberries', 'World', 'asyncpg', 'click', 'e-commerce', 'e-katalog.ru', 'headless', 'pytest', 'regex', 'tool', 'use']

@@ -14,6 +14,15 @@ export interface CheaperOffer {
   img_url?: string | null
   rating?: number | null
   review_cnt?: number | null
+  old_price?: number | null
+  discount_pct?: number | null
+  discount_end_ts?: number | null
+  shop_text?: string | null
+  delivery_methods?: string[] | null
+  has_split?: boolean | null
+  has_yapay?: boolean | null
+  is_crossborder?: boolean | null
+  is_adv?: boolean | null
 }
 
 export interface CheaperPlannedShop {
@@ -38,7 +47,7 @@ export interface CheaperSnapshot {
 }
 
 export interface CheaperEvent {
-  type: 'snapshot' | 'started' | 'planned_shops' | 'offer' | 'progress' | 'product_name' | 'done' | 'error'
+  type: 'snapshot' | 'started' | 'planned_shops' | 'offer' | 'progress' | 'product_name' | 'dialog_closed' | 'done' | 'error'
   task_id: string
   data?: Record<string, unknown>
 }

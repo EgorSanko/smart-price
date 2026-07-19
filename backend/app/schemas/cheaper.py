@@ -24,6 +24,15 @@ class Offer(BaseModel):
     img_url: str | None = None
     rating: float | None = None
     review_cnt: int | None = None
+    old_price: float | None = None
+    discount_pct: int | None = None
+    discount_end_ts: int | None = None
+    shop_text: str | None = None
+    delivery_methods: list[str] | None = None
+    has_split: bool | None = None
+    has_yapay: bool | None = None
+    is_crossborder: bool | None = None
+    is_adv: bool | None = None
 
 
 class PlannedShop(BaseModel):

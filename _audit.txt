@@ -1,0 +1,11 @@
+x.x.x subheadings: 76
+x.x subheadings: 72
+
+Таблица-captions: 24
+Рисунок-captions: 18
+In-text mentions of таблиц: ~6
+In-text mentions of рисун: ~19
+
+Code-ish lines (rough): 10
+
+Empty paragraphs strictly between two text paragraphs: 5

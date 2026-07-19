@@ -1,0 +1,6 @@
+--- table 6 ---
+Контейнер | Образ | Назначение | Порт | Ресурсы
+sp_backend | Dockerfile.prod | FastAPI + Uvicorn | internal | ~256 МБ RAM
+sp_postgres | postgres:16-alpine | PostgreSQL 16 | internal | ~128 МБ RAM
+sp_redis | redis:7-alpine | Кэширование | internal | ≤128 МБ RAM
+sp_nginx | nginx:alpine | Прокси + статика | 80, 443 | ~32 МБ RAM

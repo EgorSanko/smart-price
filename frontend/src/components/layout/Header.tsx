@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Search, Scale, MessageCircle, Info, Menu, X, LayoutGrid, CreditCard, LogIn, User, LogOut, Crown, Sparkles, TrendingDown } from 'lucide-react'
+import { Search, Scale, MessageCircle, Info, Menu, X, LayoutGrid, LogIn, User, LogOut, Sparkles, TrendingDown } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/lib/auth'
 
@@ -96,24 +96,15 @@ export function Header() {
                 <span className="text-sm font-medium text-[var(--t)] max-w-[100px] truncate">
                   {user.full_name || user.email.split('@')[0]}
                 </span>
-                {user.has_active_subscription && (
-                  <Crown className="w-3.5 h-3.5 text-[var(--ac)]" />
-                )}
               </button>
 
               {dropdownOpen && (
                 <div className="absolute right-0 top-full mt-2 w-56 bg-[var(--c1)] border border-[var(--bd)] rounded-xl shadow-xl overflow-hidden z-50">
                   <div className="px-4 py-3 border-b border-[var(--bd)]">
                     <p className="text-sm font-medium text-[var(--t)]">{user.email}</p>
-                    <p className="text-xs text-[var(--td)] mt-0.5">
-                      План: {user.subscription_plan === 'free' ? 'Бесплатный' : user.subscription_plan === 'pro' ? 'Pro' : 'Business'}
-                    </p>
                   </div>
                   <Link href="/dashboard" onClick={() => setDropdownOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--td)] hover:bg-[var(--c2)] hover:text-[var(--t)]">
                     <User className="w-4 h-4" /> Личный кабинет
-                  </Link>
-                  <Link href="/pricing" onClick={() => setDropdownOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--td)] hover:bg-[var(--c2)] hover:text-[var(--t)]">
-                    <CreditCard className="w-4 h-4" /> Тарифы
                   </Link>
                   <button
                     onClick={() => { logout(); setDropdownOpen(false) }}

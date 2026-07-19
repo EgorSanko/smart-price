@@ -11,7 +11,7 @@ Your job: when given a feature request, produce a CONCRETE implementation plan. 
 
 # Project map (memorize)
 
-**Backend** — `C:\Users\egor3\Desktop\smart-price\backend\`
+**Backend** — `C:\Users\egor3\Projects\smart-price\smart-price\backend\`
 - `app/api/v1/endpoints/` — FastAPI routes (`search_stream.py`, `chat.py`, `onliner_product.py`, etc.)
 - `app/scrapers/` — marketplace parsers (`onliner.py`, `playwright_scrapers.py` for Yandex/WB/Citilink, `regard_http.py`, `worlddevices_http.py`)
 - `app/scrapers/manager.py` — parser registry with `enabled` flag (WB & Citilink currently disabled)
@@ -20,7 +20,7 @@ Your job: when given a feature request, produce a CONCRETE implementation plan. 
 - `app/db/models/` — SQLAlchemy models
 - `app/config.py` — settings
 
-**Frontend** — `C:\Users\egor3\Desktop\smart-price\frontend\`
+**Frontend** — `C:\Users\egor3\Projects\smart-price\smart-price\frontend\`
 - `src/app/page.tsx` — landing
 - `src/app/compare/page.tsx` — search & comparison (localStorage key `sp_compare_state_v1`)
 - `src/app/chat/page.tsx` — ЕГОРУШКА chat (localStorage key `sp_chat_state_v1`, react-markdown + remark-gfm)

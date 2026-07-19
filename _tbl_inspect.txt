@@ -1,0 +1,8 @@
+H2 (подзаголовок) bold-in-style: True
+
+TABLE: tblInd=None | caption_firstindent=0.0 ('Таблица 1 — Сравнительная хара') | after_empty_para=False
+TABLE: tblInd=None | caption_firstindent=0.0 ('Таблица 2 — Матрица функционал') | after_empty_para=False
+TABLE: tblInd=None | caption_firstindent=0.0 ('Таблица 3 — Сравнение подходов') | after_empty_para=False
+TABLE: tblInd=None | caption_firstindent=0.0 ('Таблица 4 — Сравнение серверны') | after_empty_para=False
+TABLE: tblInd=None | caption_firstindent=0.0 ('Таблица 5 — Сравнение технолог') | after_empty_para=False
+TABLE: tblInd=None | caption_firstindent=0.0 ('Таблица 6 — Основные таблицы б') | after_empty_para=True

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Search, Loader2, X, Scale, ArrowRight, Store, ExternalLink } from 'lucide-react'
 import { searchProducts, compareProducts, proxyImage, type Product, type SearchStreamEvent } from '@/lib/api'
+import { EmptyCart } from '@/components/smart-icons'
 
 const MP_META: Record<string, { label: string; color: string; badge: string }> = {
   onliner:     { label: 'Onliner',       color: '#65cb02', badge: 'mp-badge-onliner' },
@@ -360,6 +361,7 @@ export default function ComparePage() {
           {/* Empty state */}
           {!isSearching && searchResults.length === 0 && selected.length === 0 && !compareText && (
             <div className="text-center py-12">
+              <EmptyCart className="mb-4 text-[var(--tm)]" />
               <p className="text-[var(--td)] text-sm mb-8 max-w-md mx-auto">
                 Найдите товары через поиск, выберите от 2 до 4 и получите AI-анализ
               </p>

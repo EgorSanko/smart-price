@@ -1,0 +1,79 @@
+TOC area (1200 chars after СОДЕРЖАНИЕ):
+СОДЕРЖАНИЕ</w:t>
+</w:r>
+</w:p>
+<w:p w:rsidR="00AC7404" w:rsidRDefault="009B6C76">
+<w:pPr>
+<w:pStyle w:val="14"/>
+<w:tabs>
+<w:tab w:val="right" w:leader="dot" w:pos="9345"/>
+</w:tabs>
+<w:rPr>
+<w:rFonts w:asciiTheme="minorHAnsi" w:hAnsiTheme="minorHAnsi"/>
+<w:noProof/>
+<w:sz w:val="22"/>
+<w:lang w:val="ru-RU" w:eastAsia="ru-RU"/>
+</w:rPr>
+</w:pPr>
+<w:r>
+<w:fldChar w:fldCharType="begin"/>
+</w:r>
+<w:r>
+<w:instrText xml:space="preserve"> TOC \o "1-2" \h \z \u </w:instrText>
+</w:r>
+<w:r>
+<w:fldChar w:fldCharType="separate"/>
+</w:r>
+<w:hyperlink w:anchor="_Toc231269692" w:history="1">
+<w:r w:rsidR="00AC7404" w:rsidRPr="009B4A45">
+<w:rPr>
+<w:rStyle w:val="aff8"/>
+<w:noProof/>
+<w:lang w:val="ru-RU"/>
+</w:rPr>
+<w:t>ВВЕДЕНИЕ</w:t>
+</w:r>
+<w:r w:rsidR="00AC7404">
+<w:rPr>
+<w:noProof/>
+<w:webHidden/>
+</w:rPr>
+<w:tab/>
+</w:r>
+<w:r w:rsidR="00AC7404">
+<w:rPr>
+<w:noProof/>
+<w:webHidden/>
+</w:rPr>
+<w:fldChar w:fldCharType="begin"/>
+</w:r>
+<w:r w:rsidR="00AC7404">
+<w:rPr>
+<w:noProof/>
+<w:webHidden/>
+</w:rPr>
+<w:instrText xml:space="preserve"> PAGEREF _Toc231269692 \h </w:instrText>
+</w:r>
+<w:r w:rsidR="00AC7404">
+<w:rPr>
+<w:noProof/>
+<w:webHidden/>
+</w:rPr>
+</w:r>
+<w:r w:rsidR="00AC7404">
+<w:rPr>
+<w:noProof/>
+<w:webHidden/>
+</w:rPr>
+<w:fldChar w:fldCharType="separa
+
+=== Как названы главы (Heading 1) ===
+  ВВЕДЕНИЕ
+  1 АНАЛИЗ ПРЕДМЕТНОЙ ОБЛАСТИ И СУЩЕСТВУЮЩИХ РЕШЕНИЙ
+  2 ПРОЕКТИРОВАНИЕ СИСТЕМЫ МЕТАПОИСКА
+  3 РЕАЛИЗАЦИЯ СИСТЕМЫ МЕТАПОИСКА
+  4 ТЕСТИРОВАНИЕ И АНАЛИЗ РЕЗУЛЬТАТОВ
+  ЗАКЛЮЧЕНИЕ
+  СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ
+  ПРИЛОЖЕНИЕ А — СНИМКИ ЭКРАНА СИСТЕМЫ
+  ПРИЛОЖЕНИЕ Б — СПРАВОЧНИК API ЭНДПОИНТОВ

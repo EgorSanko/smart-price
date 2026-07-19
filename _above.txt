@@ -1,0 +1,23 @@
+Таблица 1 — Сравнитель   | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица 2 — Матрица фу   | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица 3 — Сравнение    | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица 4 — Сравнение    | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица 5 — Сравнение    | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица 6 — Основные т   | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица 7 — Контейнеры   | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=True
+Таблица 8 — Сравнение    | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица 9 — Сравнение    | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица 10 — Сравнение   | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица 11 — Результат   | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица 12 — Примеры A   | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица 13 — Результат   | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица 14 — Метрики п   | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица 15 — Результат   | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица 16 — Сравнител   | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица 17 — Экономиче   | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица 18 — Сравнение   | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица Б.1 — API эндп   | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица Б.2 — API эндп   | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица Б.3 — API эндп   | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица Б.4 — API эндп   | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False
+Таблица Б.5 — Вспомога   | cap fi=0.0 li=None al=CENTER (1) | tbl jc=center ind=None | before_empty=False

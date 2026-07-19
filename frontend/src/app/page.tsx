@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Search, Loader2, ExternalLink, BarChart2, X, Scale, ChevronDown, ArrowUpDown, Store, Star, ShoppingBag, Eye, Sparkles } from 'lucide-react'
 import { searchProducts, getPriceHistory, compareProducts, proxyImage, type Product, type SearchStreamEvent, type PriceHistoryResponse } from '@/lib/api'
+import { PriceTagHero, EmptyCart, RollingCart } from '@/components/smart-icons'
 
 const MP_META: Record<string, { label: string; color: string; badge: string }> = {
   onliner:     { label: 'Onliner',       color: '#65cb02', badge: 'mp-badge-onliner' },
@@ -213,6 +214,7 @@ function HomePageInner() {
         <div className="container relative z-10 pt-12 pb-8">
           {products.length === 0 && !isLoading && (
             <div className="text-center mb-8">
+              <PriceTagHero className="mb-4" />
               <h1 className="text-3xl sm:text-4xl font-extrabold mb-3 tracking-tight">
                 Лучшие цены на <span className="gradient-text">одном экране</span>
               </h1>
@@ -479,6 +481,8 @@ function HomePageInner() {
 
         {/* Loading skeleton */}
         {isLoading && products.length === 0 && (
+          <>
+            <RollingCart className="mt-6 mb-2 text-[var(--ac)]" />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 mt-4">
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="card overflow-hidden">
@@ -491,14 +495,13 @@ function HomePageInner() {
               </div>
             ))}
           </div>
+          </>
         )}
 
         {/* Empty state */}
         {!isLoading && products.length === 0 && !statusText && (
           <div className="text-center py-16">
-            <div className="w-20 h-20 mx-auto mb-5 rounded-2xl bg-[var(--c2)] flex items-center justify-center">
-              <Search className="w-8 h-8 text-[var(--tm)]" />
-            </div>
+            <EmptyCart className="mb-5 text-[var(--tm)]" />
             <p className="text-[var(--td)] text-sm max-w-sm mx-auto">
               Введите название товара, чтобы найти лучшие цены на маркетплейсах
             </p>

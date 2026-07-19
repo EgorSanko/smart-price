@@ -1,132 +1,89 @@
 # Smart Price — AI Price Aggregator
 
-## What is this project
-AI-powered meta-search for comparing product prices across Belarusian (Onliner.by) and Russian (Yandex Market, Wildberries, Ozon) marketplaces. Diploma project.
+AI-powered meta-search сравнения цен по BY/RU маркетплейсам. Дипломный проект.
 
-## Tech Stack
-- **Backend:** Python 3.14, FastAPI, SQLAlchemy 2.0 async (Mapped[]), Pydantic v2, structlog
-- **Frontend:** Next.js 14 (App Router), TypeScript, Tailwind CSS, lucide-react
-- **AI:** Anthropic Claude API (tool_use pattern, SSE streaming)
-- **DB:** PostgreSQL (prod) / SQLite+aiosqlite (local dev), Redis (cache)
-- **Scraping:** httpx (API-based), Scrapling (browser stealth + anti-detection), curl_cffi (TLS fingerprinting), Firecrawl (HTML→Markdown for AI)
+> **Obsidian-vault:** навигация и глубокий контекст — в `docs/`. Здесь только то, что должно автоматически грузиться в контекст Claude Code.
 
-## Project Structure
-```
-backend/app/
-  main.py              # FastAPI app with lifespan
-  config.py            # pydantic-settings, env vars
-  api/v1/endpoints/    # search_stream.py (SSE), chat.py, compare.py, health.py
-  db/models/           # SQLAlchemy 2.0 Mapped[] models (11 models)
-  scrapers/            # onliner.py, yandex_market.py, wildberries.py, manager.py
-  agents/              # base_agent.py, shopping_agent.py (ЕГОРУШКА)
+## Стек (актуально)
+- **Backend:** Python **3.11**, FastAPI, SQLAlchemy 2.0 async (Mapped[]), asyncpg, Alembic, Pydantic v2, Celery, structlog
+- **Frontend:** Next.js 14 App Router, TypeScript, Tailwind, zustand, @tanstack/react-query, lucide-react
+- **AI:** **Gemini 2.5 Flash через OpenRouter** (`google/gemini-2.5-flash`). НЕ Anthropic/Claude.
+- **DB/Cache:** PostgreSQL 16 + Redis 7
+- **SSE** для live-поиска, **WebSocket reverse** (Алиса) для фичи «Найти дешевле»
+- **Docker Compose** на VPS: `sp_nginx`, `sp_backend`, `sp_celery`, `sp_postgres`, `sp_redis`
 
-frontend/src/
-  app/page.tsx         # Home — search with SSE streaming
-  app/chat/page.tsx    # AI chat assistant
-  app/compare/page.tsx # Product comparison with AI
-  lib/api.ts           # API client (SSE, fetch)
-  components/layout/   # Header.tsx, Footer.tsx
-```
+## VPS (Smart Price ≠ LeadSeek)
+- **IP: `5.42.123.75`** (НЕ 81.17.154.4 — это LeadSeek!)
+- **Path: `/opt/smart-price/`**
+- SSH: `ssh root@5.42.123.75`
+- Compose: `/opt/smart-price/docker-compose.yml`
+- Домен: `smrt-price.ru`, API: `api.smrt-price.ru`
 
-## Running Locally
+## Парсеры (5 рабочих)
+1. **Onliner.by** — публичный JSON API, без антибота (эталон)
+2. **Яндекс Маркет** — HTML+regex, капча на повторах (писать именно «Яндекс Маркет», без точки)
+3. **Wildberries** — `search.wb.ru/exactmatch/ru/common/v18/search`, IP rate-limit
+4. **Регард** — regard.ru
+5. **World Devices** — world-devices by
+
+Ozon/Ситилинк/AliExpress упоминаются только в «перспективах развития». НЕ активны.
+
+## Ключевые фичи
+- **Live-search SSE:** `GET /api/v1/live-search/stream?q=&region=BY|RU|all` → `start`/`parsing`/`done`/`complete`
+- **«Найти дешевле»** (`/cheaper`): реверс WebSocket Яндекс.Алисы, payload-типы `EAliceOfferCard`/`EAliceOffer`/`EAliceOfferList`. Воркер: `backend/app/workers/alisa.py`
+- **AI-чат/анализ** через OpenRouter (Gemini 2.5 Flash)
+- **Smart-icons** (`frontend/src/components/smart-icons.tsx`): inline-SVG + CSS keyframes, zero-dep (PriceTagHero, EmptyCart, RollingCart …)
+
+## Deploy (frontend, tar-pipe)
 ```bash
-# Backend (uses SQLite locally)
-cd backend && python -m uvicorn app.main:app --port 8000 --reload
-
-# Frontend
-cd frontend && npm run dev  # port 3000
+cd frontend && npm run build   # выхлоп в out/
+tar -cf - -C out . | ssh root@5.42.123.75 \
+  "cd /opt/smart-price/frontend/out && tar -xf - && docker exec sp_nginx nginx -s reload"
 ```
-- Backend .env: `DATABASE_URL=sqlite+aiosqlite:///./smartprice.db`
-- Frontend .env.local: `NEXT_PUBLIC_API_URL=http://localhost:8000`
+⚠️ **НИКОГДА `rm -rf out/`** на VPS — это отвяжет bind-mount у `sp_nginx`, сайт отдаст дефолтный nginx 404 на всех URL.
 
-## Marketplace Scrapers
+## Deploy (backend)
+Бэкенд-`.env` **ВПЕКАЕТСЯ в образ** (COPY .env /app/.env), а не монтируется. После правки `.env` нужен rebuild:
+```bash
+ssh root@5.42.123.75 "cd /opt/smart-price && docker compose build sp_backend && docker compose up -d sp_backend"
+```
 
-### Onliner.by (BY) — WORKING
-- API: `https://catalog.onliner.by/sdapi/catalog.api/search/products?query={q}`
-- Positions: `https://catalog.onliner.by/sdapi/catalog.api/products/{key}/positions`
-- Public JSON API, no anti-bot, ~22 results typical
-- Currency: BYN
+## Код — правила
+- async/await для всего I/O, никаких sync-вызовов в хэндлерах
+- Type hints: `list[str]`, `str | None`
+- SQLAlchemy: только `Mapped[]`, не `Column()`
+- Логи: structlog, никогда `print()`
+- Scraper-контракт: `list[dict]` с ключами `title, price, price_num, url, marketplace, image, shop, specs, category, onliner_key`
+- Конвенциональные коммиты + push origin/main после каждой правки; `git add <files>`, НЕ `git add .`
 
-### Yandex Market (RU) — PARTIAL
-- HTML parsing with regex, captcha on repeated requests
-- Improved headers with UA rotation, sec-ch-ua
-- Currency: RUB
+## Grep-карта (куда сразу идти)
+| Нужно | Файл |
+|---|---|
+| SSE live-search | `backend/app/api/v1/endpoints/search_stream.py` |
+| Реестр парсеров | `backend/app/scrapers/manager.py` |
+| Эталон-парсер | `backend/app/scrapers/onliner.py` |
+| Алиса «дешевле» | `backend/app/workers/alisa.py` |
+| Главная/поиск UI | `frontend/src/app/page.tsx` |
+| Страница «дешевле» | `frontend/src/app/cheaper/page.tsx` |
+| Карточка товара | `frontend/src/app/product/page.tsx` |
+| Шапка/авторизация | `frontend/src/components/layout/Header.tsx` |
+| API-клиент+SSE | `frontend/src/lib/api.ts` |
+| Smart-иконки | `frontend/src/components/smart-icons.tsx` |
 
-### Wildberries (RU) — WORKING (v18 API)
-- API: `https://search.wb.ru/exactmatch/ru/common/v18/search` (version changes over time, try v17-v19)
-- Params: appType=1, curr=rub, dest=-1257786, lang=ru, query={q}, resultset=catalog, sort=popular, spp=30
-- Prices: in `sizes[0].price.product` (kopecks, divide by 100) or `salePriceU`
-- Rate limit: 429 with X-Ratelimit-Retry header. Need 1-2s delay between requests
-- Currency: RUB
-- IMPORTANT: IP-based rate limiting. First request works, subsequent need delays
+## Подводные камни (подробно — `docs/GOTCHAS.md`)
+- **styled-jsx + early return:** `<style jsx global>` в main return НЕ рендерится, если компонент вышел через `if (loading) return …`. Оборачивать early-return во Fragment со своим `<style jsx global>`.
+- **OpenRouter гео-блок:** VPS в RU иногда режет, использовать модель `google/gemini-2.5-flash` и проверять заголовки.
+- **Docker `.env` не mount:** см. выше про rebuild.
+- **Bind-mount nginx:** см. выше про `rm -rf out/`.
 
-### Ozon (RU) — API + Playwright fallback
-- JSON API: `https://www.ozon.ru/api/entrypoint-api.bx/page/json/v2?url=/search/?text={q}`
-- Products in response.widgetStates["searchResultsV2-*"] (JSON string with items[])
-- Cloudflare blocks after repeated requests
-- Playwright fallback extracts data-state JSON from rendered page
-- Currency: RUB
+## Что недавно изменилось
+- Удалены разделы **pricing/payment** (страницы, Crown-бейдж, ссылка в dropdown). Dashboard упрощён до профиля + выхода.
+- Диплом (`ДИПЛОМ.docx`) обновлён: добавлен раздел 3.13 «Найти дешевле», 5 парсеров, унификация «Яндекс Маркет», RFC 6455 вместо Anthropic в списке литературы.
+- Мобильное приложение — **отложено**; решено делать на **Expo/React Native** (см. memory `project_smartprice_mobile_app.md`).
 
-## SSE Search Flow
-1. Frontend calls `GET /api/v1/live-search/stream?q={query}&region={BY|RU|all}`
-2. Backend sends SSE events: `start` → `parsing` (per marketplace) → `done` (per marketplace) → `complete` (all results)
-3. Region mapping: BY→[onliner], RU→[yandex, wildberries, ozon], all→[all four]
-
-## Code Conventions
-- Always async/await for I/O
-- Type hints: `list[str]`, `str | None` (modern syntax)
-- SQLAlchemy: `Mapped[]` style, not legacy `Column()`
-- Logging: structlog, never print()
-- Scrapers return `list[dict]` with keys: title, price, price_num, url, marketplace, image, shop, specs, category, onliner_key
-- SQLite compatibility: JSONB→JSON, ARRAY→TEXT (patched in session.py)
-
-## VPS Deployment
-- IP: 81.17.154.4
-- Path: /root/leadseek-app/ (shared infra)
-- Docker compose for production
-
-## Key Files to Know
-- `backend/app/api/v1/endpoints/search_stream.py` — Main search SSE endpoint
-- `backend/app/scrapers/manager.py` — Marketplace registry + parallel search
-- `backend/app/scrapers/onliner.py` — Working scraper (reference implementation)
-- `frontend/src/app/page.tsx` — Main search UI
-- `frontend/src/lib/api.ts` — API client with SSE support
-
-<!-- code-review-graph MCP tools -->
-## MCP Tools: code-review-graph
-
-**IMPORTANT: This project has a knowledge graph. ALWAYS use the
-code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
-the codebase.** The graph is faster, cheaper (fewer tokens), and gives
-you structural context (callers, dependents, test coverage) that file
-scanning cannot.
-
-### When to use graph tools FIRST
-
-- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
-- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
-- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
-- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
-- **Architecture questions**: `get_architecture_overview` + `list_communities`
-
-Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
-
-### Key Tools
-
-| Tool | Use when |
-|------|----------|
-| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
-| `get_review_context` | Need source snippets for review — token-efficient |
-| `get_impact_radius` | Understanding blast radius of a change |
-| `get_affected_flows` | Finding which execution paths are impacted |
-| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
-| `semantic_search_nodes` | Finding functions/classes by name or keyword |
-| `get_architecture_overview` | Understanding high-level codebase structure |
-| `refactor_tool` | Planning renames, finding dead code |
-
-### Workflow
-
-1. The graph auto-updates on file changes (via hooks).
-2. Use `detect_changes` for code review.
-3. Use `get_affected_flows` to understand impact.
-4. Use `query_graph` pattern="tests_for" to check coverage.
+## Навигация по vault
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — модульная карта + data-flow
+- [docs/DEPLOY.md](docs/DEPLOY.md) — подробный деплой, nginx, containers
+- [docs/GOTCHAS.md](docs/GOTCHAS.md) — все известные грабли с объяснениями
+- [docs/TASKS.md](docs/TASKS.md) — текущее состояние + отложенное
+- [docs/CHEAPER_FEATURE_ROADMAP.md](docs/CHEAPER_FEATURE_ROADMAP.md) — фаза-план «дешевле»

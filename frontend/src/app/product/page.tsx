@@ -248,28 +248,153 @@ function ProductContent() {
 
   if (loading) {
     return (
-      <div className="sp-loader-fullscreen">
-        <div className="sp-loader-bg-glow" />
-        <div className="sp-loader-bg-glow sp-glow-2" />
-        <div className="sp-loader-content">
-          <div className="sp-loader-orb">
-            <div className="sp-loader-orbit" />
-            <div className="sp-loader-orbit sp-orbit-2" />
-            <div className="sp-loader-orbit sp-orbit-3" />
-            <div className="sp-loader-core">SP</div>
+      <>
+        <div className="sp-loader-fullscreen">
+          <div className="sp-loader-bg-glow" />
+          <div className="sp-loader-bg-glow sp-glow-2" />
+          <div className="sp-loader-content">
+            <div className="sp-loader-orb">
+              <div className="sp-loader-orbit" />
+              <div className="sp-loader-orbit sp-orbit-2" />
+              <div className="sp-loader-orbit sp-orbit-3" />
+              <div className="sp-loader-core">SP</div>
+            </div>
+            <div className="sp-loader-title">Smart Price</div>
+            <div className="sp-loader-bar-track">
+              <div className="sp-loader-bar-glow" />
+            </div>
+            <div className="sp-loader-dots">
+              <span className="sp-loader-dot" />
+              <span className="sp-loader-dot" />
+              <span className="sp-loader-dot" />
+            </div>
+            <p className="sp-loader-sub">Собираем цены и отзывы</p>
           </div>
-          <div className="sp-loader-title">Smart Price</div>
-          <div className="sp-loader-bar-track">
-            <div className="sp-loader-bar-glow" />
-          </div>
-          <div className="sp-loader-dots">
-            <span className="sp-loader-dot" />
-            <span className="sp-loader-dot" />
-            <span className="sp-loader-dot" />
-          </div>
-          <p className="sp-loader-sub">Собираем цены и отзывы</p>
         </div>
-      </div>
+        <style jsx global>{`
+          :root {
+            --sp-bg: #0A0B0F;
+            --sp-card: #181922;
+            --sp-border: #2A2B3D;
+            --sp-t1: #F0F0F5;
+            --sp-t3: #5D5F78;
+            --sp-accent: #6C5CE7;
+            --sp-accent-glow: rgba(108,92,231,0.25);
+            --sp-green: #00D26A;
+            --sp-orange: #FF9F43;
+          }
+          .sp-loader-fullscreen {
+            position: fixed; inset: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: center;
+            background: var(--sp-bg);
+            font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+          }
+          .sp-loader-bg-glow {
+            position: absolute; top: 30%; left: 50%;
+            width: 500px; height: 500px;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(108,92,231,.15), transparent 70%);
+            filter: blur(60px);
+            animation: spGlowPulse 3s ease-in-out infinite;
+          }
+          .sp-glow-2 {
+            top: 60%; width: 400px; height: 400px;
+            background: radial-gradient(circle, rgba(0,210,106,.1), transparent 70%);
+            animation-delay: 1.5s;
+          }
+          @keyframes spGlowPulse {
+            0%, 100% { opacity: 0.5; transform: translate(-50%, -50%) scale(1); }
+            50% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+          }
+          .sp-loader-content {
+            position: relative; z-index: 1;
+            display: flex; flex-direction: column; align-items: center;
+          }
+          .sp-loader-orb {
+            position: relative; width: 120px; height: 120px; margin-bottom: 40px;
+          }
+          .sp-loader-orbit {
+            position: absolute; inset: 0; border-radius: 50%;
+            border: 2px solid transparent;
+            border-top-color: var(--sp-accent);
+            animation: spOrbitSpin 1.4s linear infinite;
+          }
+          .sp-orbit-2 {
+            inset: 12px;
+            border-top-color: transparent;
+            border-right-color: var(--sp-green);
+            border-bottom-color: var(--sp-green);
+            animation-duration: 2s;
+            animation-direction: reverse;
+          }
+          .sp-orbit-3 {
+            inset: 24px;
+            border-top-color: var(--sp-orange);
+            border-left-color: var(--sp-orange);
+            border-right-color: transparent;
+            border-bottom-color: transparent;
+            animation-duration: 2.8s;
+          }
+          @keyframes spOrbitSpin { to { transform: rotate(360deg); } }
+          .sp-loader-core {
+            position: absolute; inset: 32px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 28px; font-weight: 800; letter-spacing: -1px;
+            color: var(--sp-t1);
+            background: radial-gradient(circle, var(--sp-card) 60%, transparent);
+            border-radius: 50%;
+            animation: spCorePulse 2s ease-in-out infinite;
+          }
+          @keyframes spCorePulse {
+            0%, 100% { text-shadow: 0 0 12px var(--sp-accent-glow); }
+            50% { text-shadow: 0 0 28px var(--sp-accent-glow), 0 0 60px rgba(108,92,231,.15); }
+          }
+          .sp-loader-title {
+            font-size: 32px; font-weight: 800; letter-spacing: 2px;
+            color: var(--sp-t1); margin-bottom: 28px;
+            background: linear-gradient(135deg, var(--sp-t1), var(--sp-accent));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+          }
+          .sp-loader-bar-track {
+            width: 260px; height: 3px; border-radius: 3px;
+            background: var(--sp-border); overflow: hidden; margin-bottom: 24px;
+            position: relative;
+          }
+          .sp-loader-bar-glow {
+            position: absolute; top: 0; left: 0;
+            width: 40%; height: 100%; border-radius: 3px;
+            background: linear-gradient(90deg, var(--sp-accent), var(--sp-green), var(--sp-accent));
+            box-shadow: 0 0 12px var(--sp-accent-glow);
+            animation: spBarSlide 1.8s ease-in-out infinite;
+          }
+          @keyframes spBarSlide {
+            0% { left: -40%; }
+            100% { left: 100%; }
+          }
+          .sp-loader-dots { display: flex; gap: 8px; margin-bottom: 20px; }
+          .sp-loader-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--sp-accent);
+            animation: spDotBounce 1.2s ease-in-out infinite;
+          }
+          .sp-loader-dot:nth-child(2) { animation-delay: 0.15s; }
+          .sp-loader-dot:nth-child(3) { animation-delay: 0.3s; }
+          @keyframes spDotBounce {
+            0%, 80%, 100% { opacity: 0.3; transform: scale(1); }
+            40% { opacity: 1; transform: scale(1.5); }
+          }
+          .sp-loader-sub {
+            font-size: 14px; color: var(--sp-t3); letter-spacing: 0.5px;
+            animation: spSubFade 2s ease-in-out infinite;
+          }
+          @keyframes spSubFade {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+          }
+        `}</style>
+      </>
     )
   }
 

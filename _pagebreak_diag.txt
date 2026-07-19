@@ -1,0 +1,20 @@
+Total w:br: 13, page-type: 12
+
+MAJOR SECTIONS — page_break_before + preceding page-break?
+  pbb=True  own_br=False prev_br=False | РЕФЕРАТ
+  pbb=None  own_br=False prev_br=True  | СОДЕРЖАНИЕ
+  pbb=None  own_br=False prev_br=False | 1 АНАЛИЗ ПРЕДМЕТНОЙ ОБЛАСТИ И СУЩЕСТВУЮЩИХ РЕ
+  pbb=None  own_br=False prev_br=False | 2 ПРОЕКТИРОВАНИЕ СИСТЕМЫ МЕТАПОИСКА	31
+  pbb=None  own_br=False prev_br=False | 3 РЕАЛИЗАЦИЯ СИСТЕМЫ МЕТАПОИСКА	49
+  pbb=None  own_br=False prev_br=False | 4 ТЕСТИРОВАНИЕ И АНАЛИЗ РЕЗУЛЬТАТОВ	73
+  pbb=None  own_br=False prev_br=False | ПРИЛОЖЕНИЕ А — СНИМКИ ЭКРАНА СИСТЕМЫ	95
+  pbb=None  own_br=False prev_br=False | ПРИЛОЖЕНИЕ Б — СПРАВОЧНИК API ЭНДПОИНТОВ	100
+  pbb=None  own_br=False prev_br=False | ВВЕДЕНИЕ
+  pbb=None  own_br=False prev_br=True  | 1 АНАЛИЗ ПРЕДМЕТНОЙ ОБЛАСТИ И СУЩЕСТВУЮЩИХ РЕ
+  pbb=None  own_br=False prev_br=True  | 2 ПРОЕКТИРОВАНИЕ СИСТЕМЫ МЕТАПОИСКА
+  pbb=None  own_br=False prev_br=True  | 3 РЕАЛИЗАЦИЯ СИСТЕМЫ МЕТАПОИСКА
+  pbb=None  own_br=False prev_br=True  | 4 ТЕСТИРОВАНИЕ И АНАЛИЗ РЕЗУЛЬТАТОВ
+  pbb=None  own_br=False prev_br=True  | ЗАКЛЮЧЕНИЕ
+  pbb=None  own_br=False prev_br=True  | СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ
+  pbb=None  own_br=False prev_br=True  | ПРИЛОЖЕНИЕ А — СНИМКИ ЭКРАНА СИСТЕМЫ
+  pbb=None  own_br=False prev_br=True  | ПРИЛОЖЕНИЕ Б — СПРАВОЧНИК API ЭНДПОИНТОВ

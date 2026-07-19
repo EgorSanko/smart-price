@@ -210,6 +210,87 @@ body {
   animation: slideUp .4s ease forwards;
 }
 
+@keyframes panda-sway {
+  0%, 100% { transform: rotate(-3deg) translateY(0); }
+  50%      { transform: rotate(3deg) translateY(-2px); }
+}
+@keyframes panda-tear {
+  0%   { transform: translate(0, -6px) scale(.6); opacity: 0; }
+  15%  { transform: translate(0, -4px) scale(1);  opacity: 1; }
+  70%  { transform: translate(0, 24px) scale(1);  opacity: 1; }
+  100% { transform: translate(0, 32px) scale(.7); opacity: 0; }
+}
+.animate-panda-sway { animation: panda-sway 3.2s ease-in-out infinite; transform-origin: 100px 140px; }
+.animate-panda-tear { animation: panda-tear 2.4s ease-in infinite; animation-delay: .6s; }
+
+/* Smart-icon animations */
+@keyframes piggy-wiggle {
+  0%, 100% { transform: rotate(-2deg); }
+  50%      { transform: rotate(2deg); }
+}
+@keyframes coin-drop {
+  0%   { transform: translateY(-30px); opacity: 0; }
+  20%  { opacity: 1; }
+  80%  { transform: translateY(80px); opacity: 1; }
+  100% { transform: translateY(90px); opacity: 0; }
+}
+.animate-piggy-wiggle { animation: piggy-wiggle 2.6s ease-in-out infinite; }
+.animate-coin-drop-1 { animation: coin-drop 2.4s ease-in infinite; }
+.animate-coin-drop-2 { animation: coin-drop 2.4s ease-in infinite; animation-delay: .8s; }
+.animate-coin-drop-3 { animation: coin-drop 2.4s ease-in infinite; animation-delay: 1.6s; }
+
+@keyframes cart-roll {
+  0%   { transform: translateX(-12px) rotate(-1deg); }
+  50%  { transform: translateX(12px)  rotate(1deg); }
+  100% { transform: translateX(-12px) rotate(-1deg); }
+}
+@keyframes wheel-spin {
+  from { transform: rotate(0); }
+  to   { transform: rotate(360deg); }
+}
+.animate-cart-roll  { animation: cart-roll 2.2s ease-in-out infinite; }
+.animate-wheel-spin { animation: wheel-spin 1.1s linear infinite; }
+
+@keyframes coin-bob {
+  0%, 100% { transform: translateY(0) rotate(-3deg); }
+  50%      { transform: translateY(-4px) rotate(3deg); }
+}
+@keyframes coin-bob2 {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+@keyframes sparkle {
+  0%, 100% { transform: scale(1); opacity: .4; }
+  50%      { transform: scale(1.3); opacity: 1; }
+}
+.animate-coin-bob   { animation: coin-bob 2.8s ease-in-out infinite; }
+.animate-coin-bob2  { animation: coin-bob2 1.8s ease-in-out infinite; }
+.animate-sparkle    { animation: sparkle 2s ease-in-out infinite; }
+
+@keyframes arrow-drop {
+  0%, 100% { transform: translateY(-4px); opacity: .7; }
+  50%      { transform: translateY(4px);  opacity: 1; }
+}
+@keyframes tag-sway {
+  0%, 100% { transform: rotate(-4deg); }
+  50%      { transform: rotate(4deg); }
+}
+@keyframes pulse-slow {
+  0%, 100% { opacity: .08; transform: scale(1); }
+  50%      { opacity: .18; transform: scale(1.05); transform-origin: 120px 120px; }
+}
+.animate-arrow-drop { animation: arrow-drop 1.6s ease-in-out infinite; }
+.animate-tag-sway   { animation: tag-sway 4s ease-in-out infinite; }
+.animate-pulse-slow { animation: pulse-slow 3s ease-in-out infinite; transform-origin: center; }
+
+@keyframes tumble {
+  0%   { transform: translateX(-40px) rotate(0); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateX(220px) rotate(720deg); opacity: 0; }
+}
+.animate-tumble { animation: tumble 5s linear infinite; transform-origin: 30px 100px; }
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

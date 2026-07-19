@@ -76,11 +76,22 @@ async def _finalize(task_id: str, result: AlisaResult) -> None:
         ).scalar_one_or_none()
         if not row:
             return
-        row.planned_shops = [{"domain": d} for d in result.planned_shops]
-        row.offers = sorted(
-            [o.to_dict() for o in result.offers.values()],
-            key=lambda o: o["price"],
-        )
+        if result.planned_shops:
+            row.planned_shops = [{"domain": d} for d in result.planned_shops]
+        merged: dict[str, dict] = {}
+        for o in row.offers or []:
+            d = o.get("domain")
+            if d:
+                merged[d] = o
+        for o in result.offers.values():
+            od = o.to_dict()
+            d = od.get("domain")
+            if not d:
+                continue
+            prev = merged.get(d)
+            if prev is None or od.get("price", 1e18) <= prev.get("price", 1e18):
+                merged[d] = od
+        row.offers = sorted(merged.values(), key=lambda o: o.get("price", 1e18))
         if result.product_name and not row.product_name:
             row.product_name = result.product_name
         if result.product_img_url and not row.product_img_url:
@@ -94,6 +105,45 @@ async def _finalize(task_id: str, result: AlisaResult) -> None:
         await session.commit()
 
 
+async def _persist_incremental(task_id: str, event: dict) -> None:
+    """Mirror key events into the DB so a late WS-connect snapshot is non-empty."""
+    etype = event.get("type")
+    data = event.get("data") or {}
+    if etype not in ("product_name", "planned_shops", "offer"):
+        return
+    async with async_session_maker() as session:
+        row = (
+            await session.execute(select(CheaperSearch).where(CheaperSearch.task_id == task_id))
+        ).scalar_one_or_none()
+        if not row:
+            return
+        if etype == "product_name":
+            if data.get("name") and not row.product_name:
+                row.product_name = data["name"][:300]
+            if data.get("img_url") and not row.product_img_url:
+                row.product_img_url = data["img_url"]
+        elif etype == "planned_shops":
+            shops = data.get("shops") or []
+            row.planned_shops = [{"domain": d} for d in shops]
+        elif etype == "offer":
+            domain = data.get("domain")
+            if not domain:
+                return
+            current = list(row.offers or [])
+            replaced = False
+            for i, o in enumerate(current):
+                if o.get("domain") == domain:
+                    if data.get("price", 1e18) <= o.get("price", 1e18):
+                        current[i] = data
+                    replaced = True
+                    break
+            if not replaced:
+                current.append(data)
+            current.sort(key=lambda o: o.get("price", 1e18))
+            row.offers = current
+        await session.commit()
+
+
 async def _process(task: CheaperSearch, redis: aioredis.Redis) -> None:
     channel = _channel(task.task_id)
     logger.info("cheaper.worker.start", task_id=task.task_id, url=task.url)
@@ -104,6 +154,10 @@ async def _process(task: CheaperSearch, redis: aioredis.Redis) -> None:
             await redis.publish(channel, json.dumps(event, ensure_ascii=False))
         except Exception as e:
             logger.warning("cheaper.worker.publish_failed", err=str(e))
+        try:
+            await _persist_incremental(task.task_id, event)
+        except Exception as e:
+            logger.warning("cheaper.worker.persist_failed", err=str(e))
 
     await publish({"type": "started", "data": {}})
 

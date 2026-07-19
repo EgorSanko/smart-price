@@ -1,0 +1,13 @@
+=== TITLE lines with underscores / signatures (0-38) ===
+[12] al=RIGHT (2) :: '\t\t\t\t\t\t\t"____"__________________2026 г.'
+[22] al=None :: 'Исполнитель - студент учебной группы 4-МД-16'
+[24] al=None :: 'Руководитель выпускной квалификационной работы'
+[26] al=None :: 'Нормоконтролер: к.т.н. Чалова Екатерина Игорьевна'
+
+=== APPENDIX headings ===
+[522] style=Heading 1 pgbrk=True :: ПРИЛОЖЕНИЕ А — СНИМКИ ЭКРАНА СИСТЕМЫ
+[535] style=Heading 1 pgbrk=True :: ПРИЛОЖЕНИЕ Б — СПРАВОЧНИК API ЭНДПОИНТОВ
+
+=== footer / page number setup ===
+section 0: footer linked=False
+   footer para al=CENTER (1) text='90' hasPAGEfield~=True

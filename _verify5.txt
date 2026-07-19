@@ -1,0 +1,8 @@
+OPENS: 535 абз, 23 табл
+
+KEYWORDS: Ключевые слова: метапоиск, парсинг, маркетплейс, искусственный интеллект, сравнение цен, скрапинг, веб-приложение, FastAPI, Next.js, Gemini, OpenRouter, SSE, потоковая передача данных, история цен, аг
+  курсив: FastAPI, Next.js, Gemini, OpenRouter, SSE, Docker, PostgreSQL
+
+BODY bold lead-ins remaining (should be 0): 0 []
+Headings bold: 0/41
+Table rows cantSplit: 137

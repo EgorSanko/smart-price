@@ -1,0 +1,23 @@
+T 1 cap_sb=12.0 pgbrk=False | above: 'Четвёртой значи'(sb=None,sa=None,ls=None) | 'Тенденции разви'(sb=None,sa=None,ls=None) | 'Особенностью бе'(sb=None,sa=None,ls=None) | 'Белорусский рын'(sb=None,sa=None,ls=None)
+T 2 cap_sb=12.0 pgbrk=False | above: '– отсутствие ав'(sb=None,sa=None,ls=None) | '– невозможность'(sb=None,sa=None,ls=None) | '– отсутствие по'(sb=None,sa=None,ls=None) | '– использование'(sb=None,sa=None,ls=None)
+T 3 cap_sb=12.0 pgbrk=False | above: 'Сравнение подхо'(sb=None,sa=None,ls=None) | 'Со стороны марк'(sb=None,sa=None,ls=None) | 'Третий подход —'(sb=None,sa=None,ls=None) | 'Второй подход —'(sb=None,sa=None,ls=None)
+T 4 cap_sb=12.0 pgbrk=False | above: 'Сравнение серве'(sb=None,sa=None,ls=None) | 'FastAPI был выб'(sb=None,sa=None,ls=None) | 'Серверные техно'(sb=None,sa=None,ls=None) | 'В рамках данной'(sb=None,sa=None,ls=None)
+T 5 cap_sb=12.0 pgbrk=False | above: 'Сравнение техно'(sb=None,sa=None,ls=None) | 'SSE (Server-Sen'(sb=None,sa=None,ls=None) | 'WebSocket обесп'(sb=None,sa=None,ls=None) | 'Технологии пото'(sb=None,sa=None,ls=None)
+T 6 cap_sb=12.0 pgbrk=False | above: 'Основные таблиц'(sb=None,sa=None,ls=None) | 'Таблица price_h'(sb=None,sa=None,ls=None) | 'Физическая моде'(sb=None,sa=None,ls=None) | 'Пользовательска'(sb=None,sa=None,ls=None)
+T 7 cap_sb=12.0 pgbrk=False | above: <empty>(sb=10.0,sa=4.0,ls=1.0) | <empty>(sb=10.0,sa=4.0,ls=1.0) | 'Контейнеры Dock'(sb=None,sa=None,ls=None) | 'Статические фай'(sb=None,sa=None,ls=None)
+T 8 cap_sb=12.0 pgbrk=False | above: 'Сравнение реали'(sb=None,sa=None,ls=None) | 'World Devices —'(sb=None,sa=None,ls=None) | 'Парсеры Регард '(sb=None,sa=None,ls=None) | 'Парсер Wildberr'(sb=None,sa=None,ls=None)
+T 9 cap_sb=12.0 pgbrk=False | above: 'Сравнение подхо'(sb=None,sa=None,ls=None) | 'Альтернативный '(sb=None,sa=None,ls=None) | 'Экономический а'(sb=None,sa=None,ls=None) | 'Рисунок 3.2 — С'(sb=None,sa=6.0,ls=None)
+T10 cap_sb=12.0 pgbrk=False | above: 'Сравнение AI-мо'(sb=None,sa=None,ls=None) | 'Интеграция реал'(sb=None,sa=None,ls=None) | 'OpenRouter выст'(sb=None,sa=None,ls=None) | 'Выбор AI-модели'(sb=None,sa=None,ls=None)
+T11 cap_sb=12.0 pgbrk=False | above: 'Тестирование па'(sb=None,sa=None,ls=None) | '4.2 Результаты '(sb=None,sa=None,ls=None) | 'Тестовая среда.'(sb=None,sa=None,ls=None) | 'Тестовые сценар'(sb=None,sa=None,ls=None)
+T12 cap_sb=12.0 pgbrk=False | above: 'Примеры AI-корр'(sb=None,sa=None,ls=None) | 'Время выполнени'(sb=None,sa=None,ls=None) | 'Тестирование AI'(sb=None,sa=None,ls=None) | <empty>(sb=None,sa=None,ls=None)
+T13 cap_sb=12.0 pgbrk=False | above: 'Результаты тест'(sb=None,sa=None,ls=None) | 'Другой показате'(sb=None,sa=None,ls=None) | 'Наиболее показа'(sb=None,sa=None,ls=None) | 'Тестирование ги'(sb=None,sa=None,ls=None)
+T14 cap_sb=12.0 pgbrk=False | above: 'Метрики произво'(sb=None,sa=None,ls=None) | 'Для оптимизации'(sb=None,sa=None,ls=None) | 'Высокое значени'(sb=None,sa=None,ls=None) | 'Метрики времени'(sb=None,sa=None,ls=None)
+T15 cap_sb=12.0 pgbrk=False | above: 'Результаты крос'(sb=None,sa=None,ls=None) | 'Тестирование кр'(sb=None,sa=None,ls=None) | 'На планшетном р'(sb=None,sa=None,ls=None) | 'На мобильном ра'(sb=None,sa=None,ls=None)
+T16 cap_sb=12.0 pgbrk=False | above: 'Сравнительная о'(sb=None,sa=None,ls=None) | 'По времени откл'(sb=None,sa=None,ls=None) | 'По полноте резу'(sb=None,sa=None,ls=None) | 'Для объективной'(sb=None,sa=None,ls=None)
+T17 cap_sb=12.0 pgbrk=False | above: 'Экономический а'(sb=None,sa=None,ls=None) | 'Затраты на AI-в'(sb=None,sa=None,ls=None) | 'VPS-сервер (2 я'(sb=None,sa=None,ls=None) | 'Затраты на инфр'(sb=None,sa=None,ls=None)
+T18 cap_sb=12.0 pgbrk=False | above: 'Сравнение AI-мо'(sb=None,sa=None,ls=None) | 'Соотношение «ка'(sb=None,sa=None,ls=None) | 'По качеству кор'(sb=None,sa=None,ls=None) | 'Сравнение эконо'(sb=None,sa=None,ls=None)
+T19 cap_sb=12.0 pgbrk=False | above: 'Б.1 Аутентифика'(sb=12.0,sa=6.0,ls=None) | 'В данном прилож'(sb=None,sa=None,ls=None) | 'ПРИЛОЖЕНИЕ Б — '(sb=18.0,sa=12.0,ls=None) | <empty>(sb=None,sa=None,ls=None)
+T20 cap_sb=12.0 pgbrk=False | above: 'Б.2 Поиск товар'(sb=12.0,sa=6.0,ls=None) | <empty>(sb=None,sa=None,ls=None) | <TABLE>
+T21 cap_sb=12.0 pgbrk=False | above: 'Б.3 AI-ассистен'(sb=12.0,sa=6.0,ls=None) | <empty>(sb=None,sa=None,ls=None) | <TABLE>
+T22 cap_sb=12.0 pgbrk=False | above: 'Б.4 Товары и ис'(sb=12.0,sa=6.0,ls=None) | <empty>(sb=None,sa=None,ls=None) | <TABLE>
+T23 cap_sb=12.0 pgbrk=False | above: 'Б.5 Прочие эндп'(sb=12.0,sa=6.0,ls=None) | <empty>(sb=None,sa=None,ls=None) | <TABLE>

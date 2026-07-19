@@ -1,0 +1,19 @@
+=== REF (Кашин) ===
+[34] al=None text=''
+    space_before=None space_after=152400
+[35] al=CENTER (1) text='Санкт-Петербург'
+    run='Санкт-Петербург' bold=True size=None font=Times New Roman caps=None
+    run='\xa0' bold=None size=None font=Times New Roman caps=None
+    space_before=None space_after=0
+[36] al=CENTER (1) text='2026'
+    run='2026 ' bold=True size=None font=Times New Roman caps=None
+    space_before=None space_after=0
+=== OURS ===
+[36] al=CENTER (1) text=''
+    space_before=None space_after=None
+[37] al=CENTER (1) text='Санкт-Петербург'
+    run='Санкт-Петербург' bold=True size=10.0 font=None caps=None
+    space_before=None space_after=None
+[38] al=CENTER (1) text='2026'
+    run='2026' bold=None size=10.0 font=None caps=None
+    space_before=None space_after=None

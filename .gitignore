@@ -62,3 +62,8 @@ frontend/out/
 
 # Yandex Alisa session — NEVER commit
 session/
+
+*.MP4
+*.mp4
+
+_xlsx_dump.txt
